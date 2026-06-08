@@ -27,9 +27,9 @@ struct CloudPoint {
 };
 
 struct QuantumState {
-    int n = 4;
-    int l = 3;
-    int m = 1;
+    int n = 1;
+    int l = 0;
+    int m = 0;
 };
 
 // CAMERA COMPONENT MODULE
@@ -106,7 +106,8 @@ private:
     }
 
     static float sphericalHarmonic(int l_val, int m_val, float theta, float phi) {
-        float Plm = associatedLegendre(l_val, std::abs(m_val), std::cos(theta));
+        int absM = std::abs(m_val);
+        float Plm = associatedLegendre(l_val, absM, std::cos(theta));
 
         auto factorial = [](int num) {
             float res = 1.0f;
@@ -114,31 +115,43 @@ private:
             return res;
         };
 
-        float num = (2 * l_val + 1) * factorial(l_val - std::abs(m_val));
-        float den = 4.0f * PI * factorial(l_val + std::abs(m_val));
+        // Standardized real spherical harmonic normalization
+        float num = (2 * l_val + 1) * factorial(l_val - absM);
+        float den = 4.0f * PI * factorial(l_val + absM);
         float norm = std::sqrt(num / den);
 
-        float phiPart = 1.0f;
-        if (m_val > 0) phiPart = std::cos(m_val * phi);
-        else if (m_val < 0) phiPart = std::sin(std::abs(m_val) * phi);
+        if (m_val > 0) {
+            return std::sqrt(2.0f) * norm * Plm * std::cos(m_val * phi);
+        } else if (m_val < 0) {
+            return std::sqrt(2.0f) * norm * Plm * std::sin(absM * phi);
+        }
 
-        return norm * Plm * phiPart;
+        return norm * Plm; // m == 0
     }
 
 public:
     static float computeProbability(float r, float theta, float phi, const QuantumState &state) {
-        if (r < 0.001f) return 0.0f;
+        float a0 = 4.0f; // Adjusted for viewport bounds
+        float rho = (2.0f * r) / (state.n * a0);
 
-        float rho = (2.0f * r) / (state.n * 9.0f);
         int k = state.n - state.l - 1;
         int alpha = 2 * state.l + 1;
 
-        float radial = std::exp(-rho / 2.0f) * std::pow(rho, state.l) * associatedLaguerre(k, alpha, rho);
+        auto factorial = [](int num) {
+            float res = 1.0f;
+            for (int i = 2; i <= num; ++i) res *= i;
+            return res;
+        };
+
+        // Proper normalization factor for Radial Wave Function R_nl
+        float radNorm = std::sqrt(std::pow(2.0f / (state.n * a0), 3) * factorial(state.n - state.l - 1) /
+                                  (2.0f * state.n * factorial(state.n + state.l)));
+
+        float radial = radNorm * std::exp(-rho / 2.0f) * std::pow(rho, state.l) * associatedLaguerre(k, alpha, rho);
         float angular = sphericalHarmonic(state.l, state.m, theta, phi);
 
-        float psiSquared = radial * radial * angular * angular;
-
-        return psiSquared * (420.0f / (state.n * state.n * state.n * state.n));
+        float psi = radial * angular;
+        return psi * psi; // Return accurate |Ψ|²
     }
 };
 
@@ -176,14 +189,14 @@ private:
         int i = static_cast<int>(scaled_v);
         int next_i = std::min(i + 1, num_stops - 1);
 
-        float local_t = scaled_v - 1;
+        float local_t = scaled_v - static_cast<float>(i);
 
         vec4 result;
         result.r = colors[i].r + local_t * (colors[next_i].r - colors[i].r);
         result.g = colors[i].g + local_t * (colors[next_i].g - colors[i].g);
         result.b = colors[i].b + local_t * (colors[next_i].b - colors[i].b);
 
-        result.a = std::min(1.0f, value * 1.2f);
+        result.a = std::min(1.0f, value * 1.5f);
         return result;
     };
 
@@ -193,7 +206,7 @@ public:
     QuantumState state;
     std::vector<CloudPoint> cloudPoints;
 
-    const int maxPoints = 36000;
+    const int maxPoints = 72000;
     bool clipEnabled = false;
     float clipPlaneZ = 30.0f;
     float electronAngle = 0.0f;
@@ -220,38 +233,57 @@ public:
         cloudPoints.clear();
         cloudPoints.reserve(maxPoints);
 
-        const float maxR = 12.0f * state.n * state.n;
-        int attempts = 0;
-        const int maxAttemptsBudget = maxPoints * 100; // Watchdog guard to stop freezing completely
+        const float maxR = 6.0f * state.n * state.n * 2.0f;
 
-        while (static_cast<int>(cloudPoints.size()) < maxPoints && attempts < maxAttemptsBudget) {
-            attempts++;
+        // Find peak density to scale the rejection test safely
+        float maxTestDensity = 0.0f;
+        for (int i = 0; i < 600; ++i) {
+            float testR = m_dis(m_gen) * maxR;
+            float testTh = std::acos(2.0f * m_dis(m_gen) - 1.0f);
+            float testPh = 2.0f * PI * m_dis(m_gen);
+            maxTestDensity = std::max(maxTestDensity,
+                                      QuantumSimulation::computeProbability(testR, testTh, testPh, state));
+        }
+        if (maxTestDensity <= 0.0000001f) maxTestDensity = 1.0f;
+
+        // Fixed Budget: Loop exactly maxPoints * 8 times. No infinite while() loop!
+        int targetBudget = maxPoints * 8;
+        for (int i = 0; i < targetBudget && static_cast<int>(cloudPoints.size()) < maxPoints; ++i) {
             float r = m_dis(m_gen) * maxR;
             float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
             float phi = 2.0f * PI * m_dis(m_gen);
 
             float density = QuantumSimulation::computeProbability(r, theta, phi, state);
-            float volumeElement = (r * r) * std::sin(theta);
-            float weight = (density * density) * volumeElement;
 
-            if (m_dis(m_gen) * (maxR * 0.15f) < weight) {
+            if (m_dis(m_gen) * maxTestDensity < density) {
                 glm::vec3 pos(
                     r * std::sin(theta) * std::cos(phi),
                     r * std::sin(theta) * std::sin(phi),
                     r * std::cos(theta)
                 );
-
-                glm::vec3 angularDir = glm::normalize(glm::cross(pos, glm::vec3(0.0f, 0.0f, 1.0f)));
-                if (glm::length(angularDir) < 0.1f) {
-                    angularDir = glm::normalize(glm::cross(pos, glm::vec3(0.0f, 1.0f, 0.0f)));
-                }
-
-                float speed = (2.0f + m_dis(m_gen) * 2.0f) / static_cast<float>(state.n);
-                glm::vec3 vel = angularDir * speed;
-
-                cloudPoints.push_back({pos, vel, density});
+                cloudPoints.push_back({pos, glm::vec3(0.0f), density});
             }
         }
+
+        // If we didn't hit maxPoints because the orbital is very thin,
+        // fill the rest with safe low-density coordinates so vector size remains constant.
+        while (static_cast<int>(cloudPoints.size()) < maxPoints) {
+            cloudPoints.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f});
+        }
+    }
+
+    void regenerateSinglePoint(CloudPoint &p) {
+        const float maxR = 12.0f * state.n * state.n;
+        float r = m_dis(m_gen) * maxR * 0.98f;
+        float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
+        float phi = 2.0f * PI * m_dis(m_gen);
+
+        p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi),
+                          r * std::sin(theta) * std::sin(phi),
+                          r * std::cos(theta));
+
+        p.vel = glm::vec3(0.0f);
+        p.brightness = QuantumSimulation::computeProbability(r, theta, phi, state);
     }
 
     void updatePhysics(float deltaTime) {
@@ -403,67 +435,50 @@ private:
     void drawCloud(float timeVal) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_TRUE);
+
         glEnable(GL_POINT_SMOOTH);
         glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
 
         float pointScale = glm::clamp(380.0f / camera.distance, 0.7f, 5.0f);
-        glPointSize(10.0f * pointScale);
+        glPointSize(35.0f * pointScale);
 
-        glBegin(GL_POINTS);
-
-        float maxDensity = 0.0001f;
+        float maxDensity = 0.000001f;
         for (const auto &p: cloudPoints) {
             if (p.brightness > maxDensity) maxDensity = p.brightness;
         }
 
-        const float maxR = 12.0f * state.n * state.n;
-        const float dt = 0.16f;
+        glBegin(GL_POINTS);
+        for (const auto &p: cloudPoints) {
+            glm::vec3 pos = p.pos;
 
-        for (auto &p: cloudPoints) {
-            if (state.m == 0) {
-                p.vel = glm::vec3(0.0f);
+            if (state.m != 0) {
+                // 1. Calculate base speed scaled down by the principle energy level (n)
+                float globalSpeed = 0.8f / static_cast<float>(state.n * state.n);
+
+                // 2. Give each point a slightly varied speed based on its position so the cloud doesn't look rigid
+                float pointVariation = 1.0f + 0.15f * std::sin(p.pos.x * 0.5f + p.pos.y * 0.5f);
+
+                // 3. Compute a continuously growing angle (no sine wave clamping!)
+                // The sign of state.m determines if it goes clockwise or counter-clockwise
+                float angle = timeVal * globalSpeed * pointVariation * static_cast<float>(state.m);
+
+                // 4. Cache original coordinates to prevent distortion
+                float origX = pos.x;
+                float origY = pos.y;
+
+                // 5. Apply the standard 2D rotation matrix around the Z-axis (XY Plane)
+                pos.x = origX * std::cos(angle) - origY * std::sin(angle);
+                pos.y = origX * std::sin(angle) + origY * std::cos(angle);
             }
 
-            if (p.vel != glm::vec3(0.0f)) {
-                p.pos += p.vel * dt;
-
-                float r = glm::length(p.pos);
-                if (r < 0.01f) r = 0.01f;
-                float theta = std::acos(glm::clamp(p.pos.z / r, -1.0f, 1.0f));
-                float phi = std::atan2(p.pos.y, p.pos.x);
-
-                p.brightness = QuantumSimulation::computeProbability(r, theta, phi, state);
-
-                float normTest = p.brightness / maxDensity;
-                if (normTest < 0.015f || r > maxR) {
-                    // Fix: Using the engine's persistent distributions prevents point-respawn stalls
-                    float randR = m_dis(m_gen) * maxR;
-                    float randTheta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
-                    float randPhi = 2.0f * PI * m_dis(m_gen);
-
-                    p.pos = glm::vec3(randR * std::sin(randTheta) * std::cos(randPhi),
-                                      randR * std::sin(randTheta) * std::sin(randPhi),
-                                      randR * std::cos(randTheta));
-
-                    glm::vec3 angularDir = glm::normalize(glm::cross(p.pos, glm::vec3(0.0f, 0.0f, 1.0f)));
-                    if (glm::length(angularDir) < 0.1f) {
-                        angularDir = glm::normalize(glm::cross(p.pos, glm::vec3(0.0f, 1.0f, 0.0f)));
-                    }
-
-                    float speed = (1.5f + m_dis(m_gen) * 2.0f) / static_cast<float>(state.n);
-                    p.vel = angularDir * speed;
-                    p.brightness = QuantumSimulation::computeProbability(randR, randTheta, randPhi, state);
-                }
+            if (clipEnabled && pos.x > 0.0f && pos.y > 0.0f && pos.z > 0.0f) {
+                continue;
             }
 
-            if (clipEnabled) {
-                if (p.pos.x > 0.0f && p.pos.y > 0.0f && p.pos.z > 0.0f) {
-                    continue;
-                }
-            }
-
+            // === ORIGINAL COLOR CODE ===
             float norm = p.brightness / maxDensity;
             float t = glm::clamp(std::pow(norm, 0.22f), 0.0f, 1.0f);
 
@@ -490,9 +505,10 @@ private:
             }
 
             glColor4f(r_col, g_col, b_col, alpha);
-            glVertex3f(p.pos.x, p.pos.y, p.pos.z);
+            glVertex3f(pos.x, pos.y, pos.z);
         }
         glEnd();
+
         glDisable(GL_POINT_SMOOTH);
         glDisable(GL_BLEND);
     }
