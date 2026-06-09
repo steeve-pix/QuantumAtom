@@ -24,7 +24,7 @@ private:
 
     GLuint m_shaderProgram = 0;
 
-    // Mouse tracking state for camera control
+    // // Mouse tracking state for camera control
     float m_lastMouseX = 600.0f;
     float m_lastMouseY = 500.0f;
     bool m_firstMouse = true;
