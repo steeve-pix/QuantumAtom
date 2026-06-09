@@ -106,7 +106,7 @@ void Engine::regenerateCloud() {
         float adjustedDensity = density * compensation;
 
         // Only keep the point if it passes the probability threshold
-        if (m_dis(m_gen) * maxTestDensity < density) {
+        if (m_dis(m_gen) * maxTestDensity < adjustedDensity) {
             glm::vec3 pos(r * std::sin(theta) * std::cos(phi), r * std::cos(theta),
                           r * std::sin(theta) * std::sin(phi));
 
