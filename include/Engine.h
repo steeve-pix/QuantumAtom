@@ -18,7 +18,7 @@
  */
 class Engine {
 private:
-    int m_width;  ///< Window width in pixels
+    int m_width; ///< Window width in pixels
     int m_height; ///< Window height in pixels
     std::string m_title; ///< Window title
 
