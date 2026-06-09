@@ -23,7 +23,7 @@ public:
     float targetDistance = 380.0f;
     glm::vec3 destinationTargetPos = glm::vec3(0.0f);
 
-    float smoothness = 5.0f; ///< Control factor for interpolation speed
+    float smoothness = 2.5f; ///< Control factor for interpolation speed
 
     /**
      * @brief Updates camera position and orientation based on current targets.
