@@ -584,7 +584,7 @@ void Engine::drawCloud(float timeVal) {
     glPointSize(14.0f * pointScale); // Standard cleaner sizing threshold
 
     // Find local max density for relative color scaling
-    float maxDensity = 0.000001f;
+    float maxDensity = 1e-6f;
     for (const auto &p: cloudPoints) if (p.brightness > maxDensity) maxDensity = p.brightness;
 
     glBegin(GL_POINTS);
