@@ -15,10 +15,27 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glfw)
 
+set(IMGUI_SOURCES
+        external/imgui/imgui.cpp
+        external/imgui/imgui_demo.cpp
+        external/imgui/imgui_draw.cpp
+        external/imgui/imgui_tables.cpp
+        external/imgui/imgui_widgets.cpp
+        # Include the backends your project is using (GLFW and OpenGL2 according to your logs)
+        external/imgui/backends/imgui_impl_glfw.cpp
+        external/imgui/backends/imgui_impl_opengl2.cpp
+)
+
 # Main executable
 file(GLOB_RECURSE SRC_FILES "src/*.cpp")
 add_executable(QuantumAtom
         ${SRC_FILES}
+        ${IMGUI_SOURCES}
+)
+
+target_include_directories(QuantumAtom PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends
 )
 
 set(CMAKE_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
