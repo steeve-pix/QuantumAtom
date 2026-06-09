@@ -46,13 +46,13 @@ glm::vec4 Engine::heatmapFire(float value) {
     // fading through yellow, orange, red, magenta, purple to dark purple (0.0).
     const int num_stops = 7;
     static const glm::vec3 stops[num_stops] = {
-        {0.150f, 0.000f, 0.150f}, // Dark Purple (Lowest Probability)
-        {0.350f, 0.000f, 0.500f}, // Purple
-        {0.650f, 0.000f, 0.450f}, // Magenta
-        {0.900f, 0.050f, 0.050f}, // Red
-        {1.000f, 0.500f, 0.000f}, // Orange
-        {1.000f, 0.900f, 0.000f}, // Yellow
-        {1.000f, 1.000f, 0.850f} // Very Bright Yellow/White (Highest Probability)
+        {0.280f, 0.000f, 0.550f}, // 0: Luminous Indigo (Was dull dark purple)
+        {0.450f, 0.000f, 0.650f}, // 1: Vibrant Purple
+        {0.800f, 0.000f, 0.550f}, // 2: Neon Magenta / Hot Pink
+        {0.950f, 0.050f, 0.050f}, // 3: Bright Red
+        {1.000f, 0.500f, 0.000f}, // 4: Intense Orange
+        {1.000f, 0.900f, 0.000f}, // 5: Yellow
+        {1.000f, 1.000f, 0.850f} // 6: Very Bright Yellow/White
     };
 
     float scaled_v = t * (num_stops - 1);
