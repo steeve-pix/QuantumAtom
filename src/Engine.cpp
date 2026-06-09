@@ -181,17 +181,17 @@ void Engine::initShaders() {
             "}\n";
 
     std::string fragmentSource =
-        "#version 120\n"
-        "void main() {\n"
-        "    // Convert square point primitives into smooth anti-aliased mathematical circles\n"
-        "    vec2 circCoord = gl_PointCoord - vec2(0.5);\n"
-        "    float distSq = dot(circCoord, circCoord);\n"
-        "    if (distSq > 0.25) discard;\n" // Cut off outer square corners
-        "    \n"
-        "    // Create a beautiful gaussian radial falloff density signature\n"
-        "    float alphaIntensity = smoothstep(0.25, 0.0, distSq);\n"
-        "    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * alphaIntensity);\n"
-        "}\n";
+            "#version 120\n"
+            "void main() {\n"
+            "    // Convert square point primitives into smooth anti-aliased mathematical circles\n"
+            "    vec2 circCoord = gl_PointCoord - vec2(0.5);\n"
+            "    float distSq = dot(circCoord, circCoord);\n"
+            "    if (distSq > 0.25) discard;\n" // Cut off outer square corners
+            "    \n"
+            "    // Create a beautiful gaussian radial falloff density signature\n"
+            "    float alphaIntensity = smoothstep(0.25, 0.0, distSq);\n"
+            "    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * alphaIntensity);\n"
+            "}\n";
 
     GLuint vs = compileShader(GL_VERTEX_SHADER, vertexSource);
     GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
