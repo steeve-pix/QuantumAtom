@@ -174,11 +174,11 @@ GLuint Engine::compileShader(GLenum type, const std::string &source) {
 // Initializes programmatic styling for points to make them perfectly soft round orbs
 void Engine::initShaders() {
     std::string vertexSource =
-        "#version 120\n"
-        "void main() {\n"
-        "    gl_FrontColor = gl_Color;\n"
-        "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
-        "}\n";
+            "#version 120\n"
+            "void main() {\n"
+            "    gl_FrontColor = gl_Color;\n"
+            "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
+            "}\n";
 
     std::string fragmentSource =
         "#version 120\n"
