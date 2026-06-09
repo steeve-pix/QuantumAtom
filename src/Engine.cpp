@@ -99,6 +99,7 @@ void Engine::regenerateCloud() {
 
         float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
         float phi = 2.0f * PI * m_dis(m_gen);
+
         float density = QuantumSimulation::computeProbability(r, theta, phi, state);
 
         // Only keep the point if it passes the probability threshold
