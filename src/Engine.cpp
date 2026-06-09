@@ -344,7 +344,7 @@ void Engine::renderUI() {
     ImVec2 window_pos = ImVec2(static_cast<float>(m_width) - margin, static_cast<float>(m_height) - margin);
     ImVec2 window_pos_pivot = ImVec2(1.0f, 1.0f);
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
-    ImGui::SetNextWindowBgAlpha(0.35f); // Semi-transparent for HUD look
+    ImGui::SetNextWindowBgAlpha(0.35f); //
 
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
