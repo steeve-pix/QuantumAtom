@@ -39,7 +39,8 @@ Engine::~Engine() {
 // Implements a professional heatmap color mapping using an Inferno-like palette.
 glm::vec4 Engine::heatmapFire(float value) {
     // Dynamic Gamma-Correction for contrast at low-probability areas
-    float t = std::pow(std::clamp(value, 0.0f, 1.0f), 0.35f);
+    float clamp_v = std::clamp(value, 0.0f, 1.0f);
+    float t = std::pow(clamp_v, 0.35f);
 
     // High-fidelity color stops: Highest probability (1.0) is bright white/yellow,
     // fading through yellow, orange, red, magenta, purple to dark purple (0.0).
