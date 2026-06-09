@@ -49,8 +49,8 @@ private:
 
 public:
     GLFWwindow *window = nullptr; ///< Pointer to the GLFW window context
-    Camera camera;                ///< Camera controller for the 3D scene
-    QuantumState state;           ///< Current quantum numbers (n, l, m)
+    Camera camera; ///< Camera controller for the 3D scene
+    QuantumState state; ///< Current quantum numbers (n, l, m)
     std::vector<CloudPoint> cloudPoints; ///< Collection of points forming the orbital cloud
 
     const int maxPoints = 1.5e5; ///< Maximum number of points in the visualization
