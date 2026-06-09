@@ -36,6 +36,9 @@ add_executable(QuantumAtom
 target_include_directories(QuantumAtom PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui
         ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui/backends
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/external
+        include
 )
 
 set(CMAKE_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
@@ -46,11 +49,8 @@ target_include_directories(glad PUBLIC external/glad/include)
 
 # GLM
 add_library(glm INTERFACE)
-target_include_directories(glm INTERFACE external/glm)
+target_include_directories(glm INTERFACE external)
 
-target_include_directories(QuantumAtom PRIVATE
-        include
-)
 
 target_link_libraries(QuantumAtom PRIVATE glfw glad glm opengl32)
 #
