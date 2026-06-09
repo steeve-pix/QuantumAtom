@@ -207,7 +207,49 @@ void Engine::renderUI() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    // Position the main config window
+    ImGuiIO &io = ImGui::GetIO();
+
+    // --- Dynamic FPS and Frame Time Calculation ---
+    double currentTime = glfwGetTime();
+    m_frameCount++;
+    if (currentTime - m_lastFpsUpdateTime >= 0.5) {
+        // Update every 500ms for stability
+        m_fps = static_cast<float>(m_frameCount) / static_cast<float>(currentTime - m_lastFpsUpdateTime);
+        m_frameTimeMs = 1000.0f / m_fps;
+        m_frameCount = 0;
+        m_lastFpsUpdateTime = currentTime;
+    }
+
+    // =========================================================================
+    // --- NEW HUD LEGEND (TOP RIGHT) ---
+    // =========================================================================
+    float hudMargin = 15.0f;
+    ImVec2 hudPos = ImVec2(io.DisplaySize.x - hudMargin, hudMargin);
+    ImVec2 hudPivot = ImVec2(1.0f, 0.0f); // Pivot top-right corner
+    ImGui::SetNextWindowPos(hudPos, ImGuiCond_Always, hudPivot);
+    ImGui::SetNextWindowBgAlpha(0.55f); // Semi-transparent overlay
+
+    ImGuiWindowFlags hudFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+
+    if (ImGui::Begin("Performance & Math HUD", nullptr, hudFlags)) {
+        // System Metrics Subheading
+        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.8f, 1.0f), "SYSTEM METRICS");
+        ImGui::Separator();
+        ImGui::Text("Performance: %.1f ms", m_frameTimeMs);
+        ImGui::Text("Frame Time:  %.2f FPS", m_fps);
+        ImGui::Text("Cloud Density: %d / %d Points", static_cast<int>(cloudPoints.size()), maxPoints);
+
+        ImGui::Spacing();
+        ImGui::Spacing();
+    }
+    ImGui::End();
+
+
+    // =========================================================================
+    // --- CONFIGURATION CONTROL PANEL (LEFT) ---
+    // =========================================================================
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(420, 680), ImGuiCond_Once);
     ImGui::Begin("Quantum Configuration & Information", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
