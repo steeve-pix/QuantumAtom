@@ -18,10 +18,10 @@ Engine::Engine(int width, int height, const std::string &title)
     std::random_device rd;
     m_gen = std::mt19937(rd()); // Seed the random number generator
 
-    initGlfwWindow();  // Setup GLFW and create the window
-    initOpenGL();      // Initialize GLAD and basic GL states
-    initImGui();       // Setup the ImGui context and backends
-    setupCallbacks();  // Configure input and window callbacks
+    initGlfwWindow(); // Setup GLFW and create the window
+    initOpenGL(); // Initialize GLAD and basic GL states
+    initImGui(); // Setup the ImGui context and backends
+    setupCallbacks(); // Configure input and window callbacks
     regenerateCloud(); // Generate the first orbital cloud (1s state)
 }
 
@@ -48,7 +48,7 @@ glm::vec4 Engine::heatmapFire(float value) {
         {0.900f, 0.050f, 0.050f}, // Red
         {1.000f, 0.500f, 0.000f}, // Orange
         {1.000f, 0.900f, 0.000f}, // Yellow
-        {1.000f, 1.000f, 0.850f}  // Very Bright Yellow/White (Highest Probability)
+        {1.000f, 1.000f, 0.850f} // Very Bright Yellow/White (Highest Probability)
     };
 
     float scaled_v = t * (num_stops - 1);
@@ -70,10 +70,10 @@ glm::vec4 Engine::heatmapFire(float value) {
 void Engine::regenerateCloud() {
     cloudPoints.clear();
     cloudPoints.reserve(maxPoints);
-    
+
     // Scale the maximum sampling radius based on the principal quantum number n
     const float maxR = 6.0f * static_cast<float>(state.n * state.n) * 2.0f;
-    
+
     // Step 1: Find an approximate peak density to normalize the sampling budget
     float maxTestDensity = 0.0f;
     for (int i = 0; i < 600; ++i) {
@@ -83,7 +83,7 @@ void Engine::regenerateCloud() {
         maxTestDensity = std::max(maxTestDensity, QuantumSimulation::computeProbability(testR, testTh, testPh, state));
     }
     if (maxTestDensity <= 0.0000001f) maxTestDensity = 1.0f;
-    
+
     // Step 2: Sampling loop (Rejection Sampling)
     int targetBudget = maxPoints * 8; // Max attempts to fill the cloud
     for (int i = 0; i < targetBudget && static_cast<int>(cloudPoints.size()) < maxPoints; ++i) {
@@ -91,18 +91,20 @@ void Engine::regenerateCloud() {
         float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
         float phi = 2.0f * PI * m_dis(m_gen);
         float density = QuantumSimulation::computeProbability(r, theta, phi, state);
-        
+
         // Only keep the point if it passes the probability threshold
         if (m_dis(m_gen) * maxTestDensity < density) {
             glm::vec3 pos(r * std::sin(theta) * std::cos(phi), r * std::cos(theta),
                           r * std::sin(theta) * std::sin(phi));
-            cloudPoints.push_back({pos, glm::vec3(0.0f), density});
+
+            float individualSpeed = 0.3f + (m_dis(m_gen) * 2.2f);
+            cloudPoints.push_back({pos, glm::vec3(0.0f), density, individualSpeed});
         }
     }
-    
+
     // Pad the cloud with empty points if the budget wasn't met
     while (static_cast<int>(cloudPoints.size()) < maxPoints) {
-        cloudPoints.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f});
+        cloudPoints.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 1.0f});
     }
 }
 
@@ -242,8 +244,8 @@ void Engine::renderUI() {
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
     ImGui::SetNextWindowBgAlpha(0.35f); // Semi-transparent for HUD look
 
-    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | 
-                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | 
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
                                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
 
     if (ImGui::Begin("Credits Overlay", nullptr, window_flags)) {
@@ -273,23 +275,23 @@ void Engine::renderUI() {
 // Main drawing routine: clears buffers and draws all 3D/2D components.
 void Engine::drawScene(float currentFrameTime, float deltaTime) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
+
     // Update camera matrices
     camera.update(m_width, m_height, deltaTime);
-    
+
     // Draw reference elements
     drawAxes();
-    
+
     // Draw the orbital cloud
     glPushMatrix();
     drawCloud(currentFrameTime);
     glPopMatrix();
-    
+
     // Optional: Draw classical tracker
     glPushMatrix();
     // drawActiveElectron();
     glPopMatrix();
-    
+
     // Draw overlay UI
     renderUI();
 }
@@ -297,17 +299,17 @@ void Engine::drawScene(float currentFrameTime, float deltaTime) {
 // Initialized the GLFW window and context.
 void Engine::initGlfwWindow() {
     if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW.");
-    
+
     // Use legacy OpenGL 2.1 for maximum compatibility and simplicity
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-    
+
     window = glfwCreateWindow(m_width, m_height, m_title.c_str(), nullptr, nullptr);
     if (!window) {
         glfwTerminate();
         throw std::runtime_error("Failed to create GLFW window.");
     }
-    
+
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable VSync
     glfwSetWindowUserPointer(window, this); // Store 'this' for use in callbacks
@@ -317,8 +319,8 @@ void Engine::initGlfwWindow() {
 void Engine::initOpenGL() {
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
         throw std::runtime_error("Failed to initialize GLAD.");
-        
-    glEnable(GL_DEPTH_TEST);  // Enable depth buffering
+
+    glEnable(GL_DEPTH_TEST); // Enable depth buffering
     glEnable(GL_LINE_SMOOTH); // Enable anti-aliasing for lines
 }
 
@@ -347,17 +349,17 @@ void Engine::setupCallbacks() {
     glfwSetKeyCallback(window, [](GLFWwindow *win, int key, int scancode, int action, int mods) {
         ImGui_ImplGlfw_KeyCallback(win, key, scancode, action, mods);
         auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
-        
+
         // Only process hotkeys if ImGui isn't capturing keyboard input
         if (!ImGui::GetIO().WantCaptureKeyboard && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
             bool changed = false;
-            
+
             // 'R' to reset simulation
             if (key == GLFW_KEY_R && action == GLFW_PRESS) {
                 eng->resetSimulation();
                 return;
             }
-            
+
             // UP/DOWN arrows to change energy shell (n)
             if (key == GLFW_KEY_UP) {
                 eng->state.n = std::min(eng->state.n + 1, 6);
@@ -369,6 +371,9 @@ void Engine::setupCallbacks() {
                 if (eng->state.l >= eng->state.n) eng->state.l = eng->state.n - 1;
                 eng->state.m = glm::clamp(eng->state.m, -eng->state.l, eng->state.l);
                 changed = true;
+            }
+            if (key == GLFW_KEY_C && action == GLFW_PRESS) {
+                eng->clipEnabled = !eng->clipEnabled;
             }
             if (changed) eng->regenerateCloud();
         }
@@ -398,14 +403,14 @@ void Engine::setupCallbacks() {
         float yoffset = eng->m_lastMouseY - static_cast<float>(ypos);
         eng->m_lastMouseX = static_cast<float>(xpos);
         eng->m_lastMouseY = static_cast<float>(ypos);
-        
+
         if (eng->m_mouseButtonDown != -1 && !ImGui::GetIO().WantCaptureMouse) {
-            bool shiftPressed = (glfwGetKey(win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+            bool shiftPressed = (glfwGetKey(win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
                                  glfwGetKey(win, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
-            
+
             // Pan with Right Mouse Button or Shift + Left Mouse Button
             if (shiftPressed || eng->m_mouseButtonDown == GLFW_MOUSE_BUTTON_RIGHT) eng->camera.pan(xoffset, yoffset);
-            // Orbit with Left Mouse Button
+                // Orbit with Left Mouse Button
             else if (eng->m_mouseButtonDown == GLFW_MOUSE_BUTTON_LEFT) {
                 eng->camera.targetYaw += xoffset * 0.18f;
                 eng->camera.targetPitch += yoffset * 0.18f;
@@ -434,18 +439,21 @@ void Engine::setupCallbacks() {
 void Engine::drawAxes() {
     glPushMatrix();
     // Offset axes to follow the camera target (focus point)
-    glTranslatef(camera.targetPos.x, camera.targetPos.y, camera.targetPos.z);
+    glLineWidth(2.0f);
     glBegin(GL_LINES);
     glColor3f(1.0f, 0.0f, 0.0f); // X-Axis (Red)
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(120.0f, 0.0f, 0.0f);
+
     glColor3f(0.0f, 1.0f, 0.0f); // Y-Axis (Green)
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(0.0f, 120.0f, 0.0f);
+
     glColor3f(0.0f, 0.0f, 1.0f); // Z-Axis (Blue)
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(0.0f, 0.0f, 120.0f);
     glEnd();
+
     glPopMatrix();
 }
 
@@ -465,16 +473,17 @@ void Engine::drawCloud(float timeVal) {
     // Find local max density for relative color scaling
     float maxDensity = 0.000001f;
     for (const auto &p: cloudPoints) if (p.brightness > maxDensity) maxDensity = p.brightness;
-    
+
     glBegin(GL_POINTS);
     for (const auto &p: cloudPoints) {
         glm::vec3 pos = p.pos;
-        
+
         // Add dynamic rotation for non-zero Magnetic numbers (m)
         if (state.m != 0) {
-            float globalSpeed = 0.8f / static_cast<float>(state.n * state.n);
-            float pointVariation = 1.0f + 0.15f * std::sin(p.pos.x * 10.5f + p.pos.y * 10.5f);
-            float angle = timeVal * globalSpeed * pointVariation * static_cast<float>(state.m);
+            float globalSpeed = 5.0f / static_cast<float>(state.n);
+            float norm = p.brightness / maxDensity;
+            float probabilitySpeedFactor = 0.15f + (norm * 3.5f);
+            float angle = timeVal * globalSpeed * probabilitySpeedFactor * static_cast<float>(state.m);
             float origX = pos.x;
             float origZ = pos.z;
             pos.x = origX * std::cos(angle) - origZ * std::sin(angle);
@@ -483,16 +492,16 @@ void Engine::drawCloud(float timeVal) {
 
         // Apply cross-section clipping if enabled
         if (clipEnabled && pos.x > 0.0f && pos.y > 0.0f && pos.z > 0.0f) continue;
-        
+
         // Map brightness density to heatmap color
         float norm = p.brightness / maxDensity;
         glm::vec4 fireColor = heatmapFire(norm);
-        
+
         glColor4f(fireColor.r, fireColor.g, fireColor.b, fireColor.a);
         glVertex3f(pos.x, pos.y, pos.z);
     }
     glEnd();
-    
+
     glDisable(GL_POINT_SMOOTH);
     glDisable(GL_BLEND);
 }
@@ -505,7 +514,7 @@ void Engine::drawActiveElectron() {
     float z = (state.l > 0)
                   ? radius * std::sin(electronAngle) * std::sqrt(1.0f - 0.5f * 0.5f)
                   : radius * std::sin(electronAngle);
-    
+
     glEnable(GL_POINT_SMOOTH);
     glPointSize(16.0f);
     glBegin(GL_POINTS);

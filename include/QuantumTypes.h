@@ -14,6 +14,7 @@ struct CloudPoint {
     glm::vec3 pos;        ///< 3D position in the simulation space
     glm::vec3 vel;        ///< 3D velocity vector
     float brightness;     ///< Normalized probability density value
+    float speedFactor;
 };
 
 /**
