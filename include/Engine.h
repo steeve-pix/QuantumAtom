@@ -53,10 +53,11 @@ public:
     QuantumState state;           ///< Current quantum numbers (n, l, m)
     std::vector<CloudPoint> cloudPoints; ///< Collection of points forming the orbital cloud
 
-    const int maxPoints = 72000;  ///< Maximum number of points in the visualization
-    bool clipEnabled = false;     ///< Toggle for cross-section clipping view
-    float clipPlaneZ = 30.0f;     ///< (Internal) Z-plane for clipping
-    float electronAngle = 0.0f;   ///< Rotation angle for the classical electron tracker
+    const int maxPoints = 1.5e5; ///< Maximum number of points in the visualization
+    bool clipEnabled = false; ///< Toggle for cross-section clipping view
+    float clipPlaneZ = 30.0f; ///< (Internal) Z-plane for clipping
+    float electronAngle = 0.0f; ///< Rotation angle for the classical electron tracker
+    bool m_isInitialized = false;
 
     /**
      * @brief Constructor for the Engine.
