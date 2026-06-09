@@ -89,9 +89,14 @@ void Engine::regenerateCloud() {
     if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
 
     // Step 2: Sampling loop (Rejection Sampling)
-    int targetBudget = maxPoints * 8; // Max attempts to fill the cloud
-    for (int i = 0; i < targetBudget && static_cast<int>(cloudPoints.size()) < maxPoints; ++i) {
-        float r = m_dis(m_gen) * maxR;
+    int maxAttempts = maxPoints * 10;
+    int attempts = 0;
+
+    while (static_cast<int>(cloudPoints.size()) < maxPoints && attempts < maxAttempts) {
+        attempts++;
+        float u = m_dis(m_gen);
+        float r = maxR * std::pow(u, 1.5f);
+
         float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
         float phi = 2.0f * PI * m_dis(m_gen);
         float density = QuantumSimulation::computeProbability(r, theta, phi, state);
