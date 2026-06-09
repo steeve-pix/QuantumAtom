@@ -32,26 +32,34 @@ Engine::~Engine() {
 }
 
 glm::vec4 Engine::heatmapFire(float value) {
-    value = std::max(0.0f, std::min(1.0f, value));
-    const int num_stops = 6;
-    glm::vec4 colors[num_stops] = {
-        {0.0f, 0.0f, 0.0f, 1.0f},
-        {0.3f, 0.0f, 0.6f, 1.0f},
-        {0.8f, 0.0f, 0.0f, 1.0f},
-        {1.0f, 0.5f, 0.0f, 1.0f},
-        {1.0f, 1.0f, 0.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f}
+    // Dynamic Gamma-Correction for contrast at low-probability areas
+    float t = std::pow(std::clamp(value, 0.0f, 1.0f), 0.35f);
+
+    // High-fidelity color stops: Highest probability (1.0) is bright white/yellow,
+    // fading through yellow, orange, red, magenta, purple to dark purple (0.0).
+    const int num_stops = 7;
+    static const glm::vec3 stops[num_stops] = {
+        {0.150f, 0.000f, 0.150f}, // Dark Purple (Lowest Probability)
+        {0.350f, 0.000f, 0.500f}, // Purple
+        {0.650f, 0.000f, 0.450f}, // Magenta
+        {0.900f, 0.050f, 0.050f}, // Red
+        {1.000f, 0.500f, 0.000f}, // Orange
+        {1.000f, 0.900f, 0.000f}, // Yellow
+        {1.000f, 1.000f, 0.850f}  // Very Bright Yellow/White (Highest Probability)
     };
-    float scaled_v = value * (num_stops - 1);
+
+    float scaled_v = t * (num_stops - 1);
     int i = static_cast<int>(scaled_v);
     int next_i = std::min(i + 1, num_stops - 1);
     float local_t = scaled_v - static_cast<float>(i);
-    glm::vec4 result;
-    result.r = colors[i].r + local_t * (colors[next_i].r - colors[i].r);
-    result.g = colors[i].g + local_t * (colors[next_i].g - colors[i].g);
-    result.b = colors[i].b + local_t * (colors[next_i].b - colors[i].b);
-    result.a = std::min(1.0f, value * 1.5f);
-    return result;
+
+    glm::vec3 color = stops[i] + local_t * (stops[next_i] - stops[i]);
+    
+    // Dynamic Alpha: Non-linear mapping to emphasize core orbital structures
+    float alpha = std::pow(t, 0.75f) * 0.95f;
+    if (t < 0.05f) alpha *= (t / 0.05f); // Soft fade-out for noise
+
+    return glm::vec4(color, alpha);
 }
 
 void Engine::regenerateCloud() {
@@ -320,27 +328,8 @@ void Engine::drawCloud(float timeVal) {
         }
         if (clipEnabled && pos.x > 0.0f && pos.y > 0.0f && pos.z > 0.0f) continue;
         float norm = p.brightness / maxDensity;
-        float t = glm::clamp(std::pow(norm, 0.22f), 0.0f, 1.0f);
-        if (t < 0.05f) continue;
-        float r_col = 0.0f, g_col = 0.0f, b_col = 0.0f, alpha = 0.0f;
-        if (t < 0.25f) {
-            float local_t = t / 0.25f;
-            r_col = 0.05f * local_t;
-            b_col = 0.4f + (0.6f * local_t);
-            alpha = 0.15f * local_t;
-        } else if (t < 0.75f) {
-            float local_t = (t - 0.25f) / 0.50f;
-            r_col = 0.05f + (0.95f * local_t);
-            b_col = 1.0f - (0.4f * local_t);
-            alpha = 0.15f + (0.65f * local_t);
-        } else {
-            float local_t = (t - 0.75f) / 0.25f;
-            r_col = 1.0f;
-            g_col = 0.9f * local_t;
-            b_col = 0.6f * (1.0f - local_t) + (1.0f * local_t);
-            alpha = 0.80f + (0.20f * local_t);
-        }
-        glColor4f(r_col, g_col, b_col, alpha);
+        glm::vec4 fireColor = heatmapFire(norm);
+        glColor4f(fireColor.r, fireColor.g, fireColor.b, fireColor.a);
         glVertex3f(pos.x, pos.y, pos.z);
     }
     glEnd();
