@@ -3,29 +3,21 @@
 
 #include <glm/glm.hpp>
 
-/**
- * @brief Represents a single point in the probability cloud.
- * 
- * Each point in the visual cloud stores its position, an optional velocity
- * (for future kinematic simulations), and its relative brightness based on 
- * the probability density at that point.
- */
+// This structure represents a single dot in the 3D cloud.
+// It keeps track of where the dot is (pos) and how bright it should look.
 struct CloudPoint {
-    glm::vec3 pos;        ///< 3D position in the simulation space
-    glm::vec3 vel;        ///< 3D velocity vector
-    float brightness;     ///< Normalized probability density value
+    glm::vec3 pos;        
+    glm::vec3 vel;        
+    float brightness;     
     float speedFactor;
 };
 
-/**
- * @brief Quantum numbers representing the state of the electron.
- * 
- * These three integers uniquely define the atomic orbital in a hydrogen-like atom.
- */
+// This structure holds the "settings" for the atom's state.
+// In physics, these numbers (n, l, m) decide the shape of the electron's home.
 struct QuantumState {
-    int n = 1; ///< Principal quantum number (n > 0). Defines energy and shell size.
-    int l = 0; ///< Azimuthal quantum number (0 <= l < n). Defines orbital shape (s, p, d, f).
-    int m = 0; ///< Magnetic quantum number (-l <= m <= l). Defines orbital orientation.
+    int n = 1; // Size/Energy level
+    int l = 0; // Shape (0 is a sphere, higher numbers get more complex)
+    int m = 0; // Direction (which way the shape is pointing)
 };
 
-#endif // QUANTUM_TYPES_H
+#endif

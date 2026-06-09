@@ -9,23 +9,23 @@
 #include <algorithm>
 
 #ifndef PI
-#define PI 3.14159265358979323846f
+#define PI 3.141592653589793238462643383279502884f
 #endif
 
-// Engine constructor: Initializes subsystems and prepares the initial simulation state.
+// This sets up the Engine when the program starts.
 Engine::Engine(int width, int height, const std::string &title)
     : m_width(width), m_height(height), m_title(title), m_dis(0.0f, 1.0f) {
     std::random_device rd;
-    m_gen = std::mt19937(rd()); // Seed the random number generator
+    m_gen = std::mt19937(rd()); 
 
-    initGlfwWindow(); // Setup GLFW and create the window
-    initOpenGL(); // Initialize GLAD and basic GL states
-    initImGui(); // Setup the ImGui context and backends
-    setupCallbacks(); // Configure input and window callbacks
-    regenerateCloud(); // Generate the first orbital cloud (1s state)
+    initGlfwWindow(); 
+    initOpenGL(); 
+    initImGui(); 
+    setupCallbacks(); 
+    regenerateCloud(); 
 }
 
-// Engine destructor: Cleans up window and GLFW resources.
+// This cleans up and closes everything when the program ends.
 Engine::~Engine() {
     if (m_shaderProgram) {
         glDeleteProgram(m_shaderProgram);
@@ -36,15 +36,11 @@ Engine::~Engine() {
     glfwTerminate();
 }
 
-// Implements a professional heatmap color mapping using an Inferno-like palette.
+// This function calculates what color a dot should be based on its density.
+// It creates a "fire" look where higher density is brighter/hotter.
 glm::vec4 Engine::heatmapFire(float value) {
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
-
-    // --- OPTIMIZATION 1: Fast approximation for std::pow(clamp_v, 0.35f) ---
-    // x^0.35 is extremely close to the 3rd root of x (x^0.333).
-    // We can approximate it fast using std::sqrt and a linear blend:
-    float sqrt_v = std::sqrt(clamp_v);
-    float t = glm::mix(clamp_v, sqrt_v, 0.7f); // Avoids heavy pow math completely
+    float t = std::pow(clamp_v, 0.35f);
 
     const int num_stops = 7;
     static const glm::vec3 stops[num_stops] = {
@@ -64,56 +60,56 @@ glm::vec4 Engine::heatmapFire(float value) {
 
     glm::vec3 color = glm::mix(stops[i], stops[next_i], local_t);
 
-    // --- OPTIMIZATION 2: Fast approximation for std::pow(t, 0.60f) ---
-    // t^0.60 is almost identical to a simple square root (t^0.50).
-    // Using std::sqrt here is exponentially faster than std::pow.
-    float alpha = std::sqrt(t) * 0.95f;
+    float alpha = std::pow(t, 0.60f) * 0.95f;
 
     if (t < 0.03f) {
-        alpha *= (t * 33.3333f); // Multiplication instead of division (1.0f / 0.03f)
+        alpha *= (t / 0.03f); 
     }
 
     return glm::vec4(color, alpha);
 }
 
-// Monte Carlo sampling to generate the probability density cloud.
+// This is the core logic that creates the cloud of dots.
+// It uses "rejection sampling": it picks a random spot and checks the math
+// to see if an electron is likely to be there. If yes, it adds a dot.
 void Engine::regenerateCloud() {
     cloudPoints.clear();
     cloudPoints.reserve(maxPoints);
 
-    // Scale the maximum sampling radius based on the principal quantum number n
-    const float maxR = 6.0f * static_cast<float>(state.n * state.n) * 2.0f;
+    const float maxR = 6.0f * static_cast<float>(state.n * state.n) * 1.5f;
 
-    // Step 1: Find an approximate peak density to normalize the sampling budget
+    // First, find the highest possible density to use as a baseline.
     float maxTestDensity = 0.0f;
-    for (int i = 0; i < 600; ++i) {
+    for (int i = 0; i < 1000; ++i) {
         float testR = m_dis(m_gen) * maxR;
         float testTh = std::acos(2.0f * m_dis(m_gen) - 1.0f);
         float testPh = 2.0f * PI * m_dis(m_gen);
+
         maxTestDensity = std::max(maxTestDensity, QuantumSimulation::computeProbability(testR, testTh, testPh, state));
     }
     if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
 
-    // Step 2: Sampling loop (Rejection Sampling)
-    int maxAttempts = maxPoints * 10;
+    // Keep trying random spots until we have enough dots.
+    int maxAttempts = maxPoints * 25; 
     int attempts = 0;
 
     while (static_cast<int>(cloudPoints.size()) < maxPoints && attempts < maxAttempts) {
         attempts++;
         float u = m_dis(m_gen);
-        float r = maxR * std::pow(u, 1.5f);
+        float r = maxR * u;
 
         float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
         float phi = 2.0f * PI * m_dis(m_gen);
 
         float density = QuantumSimulation::computeProbability(r, theta, phi, state);
 
-        float compensation = (u > 0.0001f) ? (1.5f * std::sqrt(u)) : 1.0f;
-        float adjustedDensity = density * compensation;
+        float volumeCorrection = r * r;
+        float adjustedDensity = density * volumeCorrection;
 
-        // Only keep the point if it passes the probability threshold
-        if (m_dis(m_gen) * maxTestDensity < adjustedDensity) {
-            glm::vec3 pos(r * std::sin(theta) * std::cos(phi), r * std::cos(theta),
+        // If the math says this spot is likely, keep it!
+        if (m_dis(m_gen) * (maxTestDensity * maxR * maxR) < adjustedDensity) {
+            glm::vec3 pos(r * std::sin(theta) * std::cos(phi),
+                          r * std::cos(theta),
                           r * std::sin(theta) * std::sin(phi));
 
             float individualSpeed = 0.3f + (m_dis(m_gen) * 2.2f);
@@ -121,13 +117,13 @@ void Engine::regenerateCloud() {
         }
     }
 
-    // Pad the cloud with empty points if the budget wasn't met
+    // If we couldn't find enough spots, fill the rest with empty dots.
     while (static_cast<int>(cloudPoints.size()) < maxPoints) {
         cloudPoints.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 1.0f});
     }
 }
 
-// Resets all simulation parameters and the camera to default values.
+// Resets everything to the initial Hydrogen state.
 void Engine::resetSimulation() {
     state.n = 1;
     state.l = 0;
@@ -142,7 +138,7 @@ void Engine::resetSimulation() {
     std::cout << "[System] Simulation environment successfully reset." << std::endl;
 }
 
-// Re-generates a single point in the cloud (e.g., for dynamic replacement).
+// Re-creates just one dot in the cloud.
 void Engine::regenerateSinglePoint(CloudPoint &p) {
     const float maxR = 12.0f * static_cast<float>(state.n * state.n);
     float r = m_dis(m_gen) * maxR * 0.98f;
@@ -153,14 +149,15 @@ void Engine::regenerateSinglePoint(CloudPoint &p) {
     p.brightness = QuantumSimulation::computeProbability(r, theta, phi, state);
 }
 
-// Updates time-dependent simulation variables (e.g., electron orbit angle).
+// Updates movement over time, like the rotating electron tracker.
 void Engine::updatePhysics(float deltaTime) {
     float orbitSpeed = 4.5f / static_cast<float>(state.n * state.n);
     electronAngle += orbitSpeed * deltaTime;
-    if (electronAngle > 2.0f * PI) electronAngle -= 2.0f * PI;
+
+    if (electronAngle > 2.0f * PI) electronAngle = std::fmod(electronAngle, 2.0f * PI);
 }
 
-// Helper compile utility
+// Helper function to compile the code that runs on the graphics card.
 GLuint Engine::compileShader(GLenum type, const std::string &source) {
     GLuint shader = glCreateShader(type);
     const char *src = source.c_str();
@@ -177,7 +174,7 @@ GLuint Engine::compileShader(GLenum type, const std::string &source) {
     return shader;
 }
 
-// Initializes programmatic styling for points to make them perfectly soft round orbs
+// Sets up the shaders to make the dots look like soft, glowing spheres.
 void Engine::initShaders() {
     std::string vertexSource =
             "#version 120\n"
@@ -189,12 +186,10 @@ void Engine::initShaders() {
     std::string fragmentSource =
             "#version 120\n"
             "void main() {\n"
-            "    // Convert square point primitives into smooth anti-aliased mathematical circles\n"
             "    vec2 circCoord = gl_PointCoord - vec2(0.5);\n"
             "    float distSq = dot(circCoord, circCoord);\n"
-            "    if (distSq > 0.25) discard;\n" // Cut off outer square corners
+            "    if (distSq > 0.25) discard;\n" 
             "    \n"
-            "    // Create a beautiful gaussian radial falloff density signature\n"
             "    float alphaIntensity = smoothstep(0.25, 0.0, distSq);\n"
             "    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * alphaIntensity);\n"
             "}\n";
@@ -207,7 +202,7 @@ void Engine::initShaders() {
     glLinkProgram(m_shaderProgram);
 }
 
-// Renders the main ImGui configuration panel and theory section.
+// Draws the menus and information on the screen using ImGui.
 void Engine::renderUI() {
     ImGui_ImplOpenGL2_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -215,32 +210,26 @@ void Engine::renderUI() {
 
     ImGuiIO &io = ImGui::GetIO();
 
-    // --- Dynamic FPS and Frame Time Calculation ---
     double currentTime = glfwGetTime();
     m_frameCount++;
     if (currentTime - m_lastFpsUpdateTime >= 0.5) {
-        // Update every 500ms for stability
         m_fps = static_cast<float>(m_frameCount) / static_cast<float>(currentTime - m_lastFpsUpdateTime);
         m_frameTimeMs = 1000.0f / m_fps;
         m_frameCount = 0;
         m_lastFpsUpdateTime = currentTime;
     }
 
-    // =========================================================================
-    // --- NEW HUD LEGEND (TOP RIGHT) ---
-    // =========================================================================
     float hudMargin = 15.0f;
     ImVec2 hudPos = ImVec2(io.DisplaySize.x - hudMargin, hudMargin);
-    ImVec2 hudPivot = ImVec2(1.0f, 0.0f); // Pivot top-right corner
+    ImVec2 hudPivot = ImVec2(1.0f, 0.0f); 
     ImGui::SetNextWindowPos(hudPos, ImGuiCond_Always, hudPivot);
-    ImGui::SetNextWindowBgAlpha(0.55f); // Semi-transparent overlay
+    ImGui::SetNextWindowBgAlpha(0.55f); 
 
     ImGuiWindowFlags hudFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
                                 ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
 
     if (ImGui::Begin("Performance & Math HUD", nullptr, hudFlags)) {
-        // System Metrics Subheading
         ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.8f, 1.0f), "SYSTEM METRICS");
         ImGui::Separator();
         ImGui::Text("Performance: %.1f ms", m_frameTimeMs);
@@ -253,20 +242,15 @@ void Engine::renderUI() {
     ImGui::End();
 
 
-    // =========================================================================
-    // --- CONFIGURATION CONTROL PANEL (LEFT) ---
-    // =========================================================================
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(420, 680), ImGuiCond_Once);
     ImGui::Begin("Quantum Configuration & Information", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
-    // --- SECTION 1: QUANTUM NUMBERS CONTROL ---
     ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.8f, 1.0f), "QUANTUM NUMBERS CONTROL");
     ImGui::Separator();
 
     bool stateChanged = false;
 
-    // Principal Quantum Number (n)
     ImGui::SliderInt("Principle (n)", &state.n, 1, 6);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         stateChanged = true;
@@ -275,7 +259,6 @@ void Engine::renderUI() {
     }
     ImGui::TextDisabled("Defines energy shell and size limit boundaries.");
 
-    // Azimuthal Quantum Number (l)
     ImGui::SliderInt("Azimuthal (l)", &state.l, 0, state.n - 1);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         stateChanged = true;
@@ -283,7 +266,6 @@ void Engine::renderUI() {
     }
     ImGui::TextDisabled("Defines the subshell shape layout geometry (s, p, d, f).");
 
-    // Magnetic Quantum Number (m)
     ImGui::SliderInt("Magnetic (m)", &state.m, -state.l, state.l);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         stateChanged = true;
@@ -292,12 +274,11 @@ void Engine::renderUI() {
 
     ImGui::Spacing();
     ImGui::Checkbox("Enable Cross-Section Clip", &clipEnabled);
-    if (stateChanged) regenerateCloud(); // Trigger cloud refresh on change
+    if (stateChanged) regenerateCloud(); 
 
     ImGui::Spacing();
     ImGui::Spacing();
 
-    // --- SECTION 2: EDUCATIONAL THEORY ---
     ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.0f, 1.0f), "WHAT ARE YOU LOOKING AT?");
     ImGui::Separator();
 
@@ -345,12 +326,11 @@ void Engine::renderUI() {
     ImGui::EndChild();
     ImGui::End();
 
-    // --- SECTION: OVERLAY CREDITS (BOTTOM RIGHT) ---
     float margin = 15.0f;
     ImVec2 window_pos = ImVec2(static_cast<float>(m_width) - margin, static_cast<float>(m_height) - margin);
     ImVec2 window_pos_pivot = ImVec2(1.0f, 1.0f);
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
-    ImGui::SetNextWindowBgAlpha(0.35f); //
+    ImGui::SetNextWindowBgAlpha(0.35f); 
 
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration |
                                     ImGuiWindowFlags_AlwaysAutoResize |
@@ -378,42 +358,33 @@ void Engine::renderUI() {
     }
     ImGui::End();
 
-    // Final UI render call
     ImGui::Render();
     ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 }
 
-// Main drawing routine: clears buffers and draws all 3D/2D components.
+// This is the main drawing routine. It clears the screen and calls all the other draw functions.
 void Engine::drawScene(float currentFrameTime, float deltaTime) {
-    // Explicitly clear background buffers completely to structural defaults
-    glClearColor(0.05f, 0.05f, 0.08f, 1.0f); // Clean deep cosmic slate background
+    glClearColor(0.05f, 0.05f, 0.08f, 1.0f); 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Update camera matrices
     camera.update(m_width, m_height, deltaTime);
 
-    // Draw reference elements
     drawAxes();
 
-    // Draw the orbital cloud
     glPushMatrix();
     drawCloud(currentFrameTime);
     glPopMatrix();
 
-    // Optional: Draw classical tracker
     glPushMatrix();
-    // drawActiveElectron();
     glPopMatrix();
 
-    // Draw overlay UI
     renderUI();
 }
 
-// Initialized the GLFW window and context.
+// Sets up the GLFW window context.
 void Engine::initGlfwWindow() {
     if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW.");
 
-    // Use legacy OpenGL 2.1 for maximum compatibility and simplicity
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
 
@@ -424,27 +395,25 @@ void Engine::initGlfwWindow() {
     }
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable VSync
-    glfwSetWindowUserPointer(window, this); // Store 'this' for use in callbacks
+    glfwSwapInterval(1); 
+    glfwSetWindowUserPointer(window, this); 
 }
 
-// Initializes basic OpenGL state and GLAD loader.
+// Loads OpenGL functions and sets up basic drawing rules.
 void Engine::initOpenGL() {
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
         throw std::runtime_error("Failed to initialize GLAD.");
 
-    glEnable(GL_DEPTH_TEST); // Enable depth buffering
+    glEnable(GL_DEPTH_TEST); 
     glDepthFunc(GL_LEQUAL);
 
-    // Enable point sprites behavior across native hardware drivers
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-    glEnable(0x8861); // GL_POINT_SPRITE compatibility mapping for older hardware
+    glEnable(0x8861); 
 
-    // Compile color mapping shaders
     initShaders();
 }
 
-// Initializes the Dear ImGui context and platform/renderer backends.
+// Sets up the ImGui menu system.
 void Engine::initImGui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -455,9 +424,8 @@ void Engine::initImGui() {
     ImGui_ImplOpenGL2_Init();
 }
 
-// Registers GLFW callbacks for window resize, keyboard, mouse, and scroll events.
+// Connects keyboard and mouse inputs to the program's functions.
 void Engine::setupCallbacks() {
-    // Handle window resizing
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow *win, int w, int h) {
         auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
         eng->m_width = w;
@@ -465,29 +433,24 @@ void Engine::setupCallbacks() {
         glViewport(0, 0, w, h);
     });
 
-    // Handle keyboard input
     glfwSetKeyCallback(window, [](GLFWwindow *win, int key, int scancode, int action, int mods) {
         ImGui_ImplGlfw_KeyCallback(win, key, scancode, action, mods);
         auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
 
-        // Only process hotkeys if ImGui isn't capturing keyboard input
         if (!ImGui::GetIO().WantCaptureKeyboard && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
             bool changed = false;
 
-            // 'R' to reset simulation
             if (key == GLFW_KEY_R && action == GLFW_PRESS) {
                 eng->resetSimulation();
                 return;
             }
 
-            // UP/DOWN arrows to change energy shell (n)
             if (key == GLFW_KEY_UP) {
                 eng->state.n = std::min(eng->state.n + 1, 6);
                 changed = true;
             }
             if (key == GLFW_KEY_DOWN) {
                 eng->state.n = std::max(eng->state.n - 1, 1);
-                // Ensure dependent quantum numbers stay in valid ranges
                 if (eng->state.l >= eng->state.n) eng->state.l = eng->state.n - 1;
                 eng->state.m = glm::clamp(eng->state.m, -eng->state.l, eng->state.l);
                 changed = true;
@@ -499,7 +462,6 @@ void Engine::setupCallbacks() {
         }
     });
 
-    // Handle mouse button clicks
     glfwSetMouseButtonCallback(window, [](GLFWwindow *win, int button, int action, int mods) {
         ImGui_ImplGlfw_MouseButtonCallback(win, button, action, mods);
         auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
@@ -509,7 +471,6 @@ void Engine::setupCallbacks() {
         } else eng->m_mouseButtonDown = -1;
     });
 
-    // Handle mouse movement for camera orbit/pan
     glfwSetCursorPosCallback(window, [](GLFWwindow *win, double xpos, double ypos) {
         ImGui_ImplGlfw_CursorPosCallback(win, xpos, ypos);
         auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
@@ -528,9 +489,7 @@ void Engine::setupCallbacks() {
             bool shiftPressed = (glfwGetKey(win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
                                  glfwGetKey(win, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
 
-            // Pan with Right Mouse Button or Shift + Left Mouse Button
             if (shiftPressed || eng->m_mouseButtonDown == GLFW_MOUSE_BUTTON_RIGHT) eng->camera.pan(xoffset, yoffset);
-                // Orbit with Left Mouse Button
             else if (eng->m_mouseButtonDown == GLFW_MOUSE_BUTTON_LEFT) {
                 eng->camera.targetYaw += xoffset * 0.18f;
                 eng->camera.targetPitch += yoffset * 0.18f;
@@ -539,7 +498,6 @@ void Engine::setupCallbacks() {
         }
     });
 
-    // Handle mouse scroll wheel for zooming
     glfwSetScrollCallback(window, [](GLFWwindow *win, double xoffset, double yoffset) {
         ImGui_ImplGlfw_ScrollCallback(win, xoffset, yoffset);
         if (!ImGui::GetIO().WantCaptureMouse) {
@@ -549,40 +507,39 @@ void Engine::setupCallbacks() {
         }
     });
 
-    // Pass character input to ImGui
     glfwSetCharCallback(window, [](GLFWwindow *win, unsigned int codepoint) {
         ImGui_ImplGlfw_CharCallback(win, codepoint);
     });
 }
 
-// Draws the XYZ coordinate axes at the world origin.
+// Draws the X, Y, and Z axes to help you see directions in 3D.
 void Engine::drawAxes() {
     glPushMatrix();
     glLineWidth(2.0f);
     glBegin(GL_LINES);
-    glColor3f(1.0f, 0.0f, 0.0f); // X-Axis (Red)
+    glColor3f(1.0f, 0.0f, 0.0f); 
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(120.0f, 0.0f, 0.0f);
 
-    glColor3f(0.0f, 1.0f, 0.0f); // Y-Axis (Green)
+    glColor3f(0.0f, 1.0f, 0.0f); 
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(0.0f, 120.0f, 0.0f);
 
-    glColor3f(0.0f, 0.0f, 1.0f); // Z-Axis (Blue)
+    glColor3f(0.0f, 0.0f, 1.0f); 
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(0.0f, 0.0f, 120.0f);
     glEnd();
     glPopMatrix();
 }
 
-// Renders the probability density cloud using point sprites and additive-like blending.
+// This function draws all the dots that make up the electron cloud.
 void Engine::drawCloud(float timeVal) {
     if (cloudPoints.empty()) return;
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE); // Change to GL_FALSE so transparent particles don't break depth testing pairs
+    glDepthMask(GL_TRUE); 
 
     glUseProgram(m_shaderProgram);
 
@@ -590,17 +547,15 @@ void Engine::drawCloud(float timeVal) {
     glPointSize(14.0f * pointScale);
 
     float maxDensity = 1e-6f;
-    // Cache total size to avoid repeated member calls
     const size_t numPoints = cloudPoints.size();
 
-    // Optimize max density search loop
     for (size_t i = 0; i < numPoints; ++i) {
         if (cloudPoints[i].brightness > maxDensity) {
             maxDensity = cloudPoints[i].brightness;
         }
     }
 
-    float invMaxDensity = 1.0f / maxDensity; // Multiplication is faster than division
+    float invMaxDensity = 1.0f / maxDensity; 
     float globalSpeed = 5.0f / static_cast<float>(state.n);
     bool useRotation = (state.m != 0);
     float m_float = static_cast<float>(state.m);
@@ -610,16 +565,13 @@ void Engine::drawCloud(float timeVal) {
         const auto &p = cloudPoints[i];
         glm::vec3 pos = p.pos;
 
-        // Apply cross-section clipping upfront to skip math entirely if rejected
-        if (clipEnabled && pos.y > 0.0f && pos.z > 0.0f) continue;
-
         float norm = p.brightness * invMaxDensity;
 
+        // If the atom state has a rotation (m != 0), spin the dots around the center.
         if (useRotation) {
             float probabilitySpeedFactor = 0.15f + (norm * 3.5f);
             float angle = timeVal * globalSpeed * probabilitySpeedFactor * m_float;
 
-            // Fast sine/cosine calculation
             float sinA = std::sin(angle);
             float cosA = std::cos(angle);
 
@@ -627,6 +579,11 @@ void Engine::drawCloud(float timeVal) {
             float origZ = pos.z;
             pos.x = origX * cosA - origZ * sinA;
             pos.z = origX * sinA + origZ * cosA;
+        }
+
+        // If clipping is enabled, don't draw dots in the top-front quadrant.
+        if (clipEnabled && pos.y > 0.0f && pos.z > 0.0f) {
+            continue;
         }
 
         glm::vec4 fireColor = heatmapFire(norm);
@@ -640,7 +597,7 @@ void Engine::drawCloud(float timeVal) {
     glDisable(GL_BLEND);
 }
 
-// (Internal) Draws a bright sphere representing a classical electron point-particle.
+// Draws a single white dot that follows a circular path.
 void Engine::drawActiveElectron() {
     float radius = 14.5f * static_cast<float>(state.n * state.n);
     float x = radius * std::cos(electronAngle);
