@@ -30,6 +30,18 @@ private:
     bool m_firstMouse = true;
     int m_mouseButtonDown = -1;
 
+    float m_fps = 0.0f;
+    float m_frameTimeMs = 0.0f;
+    double m_lastFpsUpdateTime = 0.0;
+    int m_frameCount = 0;
+
+    // OpenGL Legacy Performance Caching Context Display Objects
+    int m_pointsGeneratedSoFar = 0;
+    bool m_needsRebuild = false;
+
+    GLuint m_cloudDisplayList = 0;
+    bool m_displayListCompiled = false;
+
     // Random number generation for cloud point sampling
     std::mt19937 m_gen;
     std::uniform_real_distribution<float> m_dis;
