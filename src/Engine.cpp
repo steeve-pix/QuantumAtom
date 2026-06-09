@@ -157,7 +157,7 @@ void Engine::updatePhysics(float deltaTime) {
 // Helper compile utility
 GLuint Engine::compileShader(GLenum type, const std::string &source) {
     GLuint shader = glCreateShader(type);
-    const char* src = source.c_str();
+    const char *src = source.c_str();
     glShaderSource(shader, 1, &src, nullptr);
     glCompileShader(shader);
 
