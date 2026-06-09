@@ -604,7 +604,7 @@ void Engine::drawCloud(float timeVal) {
         }
 
         // Apply cross-section clipping if enabled
-        if (clipEnabled && pos.x > 0.0f && pos.y > 0.0f && pos.z > 0.0f) continue;
+        if (clipEnabled && pos.y > 0.0f && pos.z > 0.0f) continue;
 
         // Map brightness density to heatmap color
         float norm = p.brightness / maxDensity;
