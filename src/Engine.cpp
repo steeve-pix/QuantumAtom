@@ -27,6 +27,9 @@ Engine::Engine(int width, int height, const std::string &title)
 
 // Engine destructor: Cleans up window and GLFW resources.
 Engine::~Engine() {
+    if (m_shaderProgram) {
+        glDeleteProgram(m_shaderProgram);
+    }
     if (window) {
         glfwDestroyWindow(window);
     }
@@ -141,6 +144,53 @@ void Engine::updatePhysics(float deltaTime) {
     if (electronAngle > 2.0f * PI) electronAngle -= 2.0f * PI;
 }
 
+// Helper compile utility
+GLuint Engine::compileShader(GLenum type, const std::string &source) {
+    GLuint shader = glCreateShader(type);
+    const char* src = source.c_str();
+    glShaderSource(shader, 1, &src, nullptr);
+    glCompileShader(shader);
+
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+        std::cerr << "[Shader Error] Compilation failed:\n" << infoLog << std::endl;
+    }
+    return shader;
+}
+
+// Initializes programmatic styling for points to make them perfectly soft round orbs
+void Engine::initShaders() {
+    std::string vertexSource =
+        "#version 120\n"
+        "void main() {\n"
+        "    gl_FrontColor = gl_Color;\n"
+        "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
+        "}\n";
+
+    std::string fragmentSource =
+        "#version 120\n"
+        "void main() {\n"
+        "    // Convert square point primitives into smooth anti-aliased mathematical circles\n"
+        "    vec2 circCoord = gl_PointCoord - vec2(0.5);\n"
+        "    float distSq = dot(circCoord, circCoord);\n"
+        "    if (distSq > 0.25) discard;\n" // Cut off outer square corners
+        "    \n"
+        "    // Create a beautiful gaussian radial falloff density signature\n"
+        "    float alphaIntensity = smoothstep(0.25, 0.0, distSq);\n"
+        "    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * alphaIntensity);\n"
+        "}\n";
+
+    GLuint vs = compileShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
+    m_shaderProgram = glCreateProgram();
+    glAttachShader(m_shaderProgram, vs);
+    glAttachShader(m_shaderProgram, fs);
+    glLinkProgram(m_shaderProgram);
+}
+
 // Renders the main ImGui configuration panel and theory section.
 void Engine::renderUI() {
     ImGui_ImplOpenGL2_NewFrame();
@@ -250,7 +300,7 @@ void Engine::renderUI() {
 
     if (ImGui::Begin("Credits Overlay", nullptr, window_flags)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.8f, 1.0f, 1.0f));
-        ImGui::Text("Simulation architecture by");
+        ImGui::Text("Credits to");
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.7f, 1.0f), "kavan010");
         ImGui::PopStyleColor();
@@ -274,6 +324,8 @@ void Engine::renderUI() {
 
 // Main drawing routine: clears buffers and draws all 3D/2D components.
 void Engine::drawScene(float currentFrameTime, float deltaTime) {
+    // Explicitly clear background buffers completely to structural defaults
+    glClearColor(0.05f, 0.05f, 0.08f, 1.0f); // Clean deep cosmic slate background
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Update camera matrices
@@ -321,7 +373,14 @@ void Engine::initOpenGL() {
         throw std::runtime_error("Failed to initialize GLAD.");
 
     glEnable(GL_DEPTH_TEST); // Enable depth buffering
-    glEnable(GL_LINE_SMOOTH); // Enable anti-aliasing for lines
+    glDepthFunc(GL_LEQUAL);
+
+    // Enable point sprites behavior across native hardware drivers
+    glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+    glEnable(0x8861); // GL_POINT_SPRITE compatibility mapping for older hardware
+
+    // Compile color mapping shaders
+    initShaders();
 }
 
 // Initializes the Dear ImGui context and platform/renderer backends.
@@ -438,7 +497,6 @@ void Engine::setupCallbacks() {
 // Draws the XYZ coordinate axes at the world origin.
 void Engine::drawAxes() {
     glPushMatrix();
-    // Offset axes to follow the camera target (focus point)
     glLineWidth(2.0f);
     glBegin(GL_LINES);
     glColor3f(1.0f, 0.0f, 0.0f); // X-Axis (Red)
@@ -453,7 +511,6 @@ void Engine::drawAxes() {
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(0.0f, 0.0f, 120.0f);
     glEnd();
-
     glPopMatrix();
 }
 
@@ -462,13 +519,14 @@ void Engine::drawCloud(float timeVal) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-    glEnable(GL_POINT_SMOOTH);
-    glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
+    glDepthMask(GL_TRUE); // Allow particles to overlap cleanly without blocking borders
+
+    // Turn on the programmatic color-mapping raytracer styling shader
+    glUseProgram(m_shaderProgram);
 
     // Scale point size based on camera distance for a consistent visual density
     float pointScale = glm::clamp(380.0f / camera.distance, 0.7f, 5.0f);
-    glPointSize(35.0f * pointScale);
+    glPointSize(14.0f * pointScale); // Standard cleaner sizing threshold
 
     // Find local max density for relative color scaling
     float maxDensity = 0.000001f;
@@ -502,7 +560,8 @@ void Engine::drawCloud(float timeVal) {
     }
     glEnd();
 
-    glDisable(GL_POINT_SMOOTH);
+    glUseProgram(0); // Unbind point shader safely
+    glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
 }
 
@@ -515,11 +574,9 @@ void Engine::drawActiveElectron() {
                   ? radius * std::sin(electronAngle) * std::sqrt(1.0f - 0.5f * 0.5f)
                   : radius * std::sin(electronAngle);
 
-    glEnable(GL_POINT_SMOOTH);
-    glPointSize(16.0f);
+    glPointSize(12.0f);
     glBegin(GL_POINTS);
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     glVertex3f(x, y, z);
     glEnd();
-    glDisable(GL_POINT_SMOOTH);
 }

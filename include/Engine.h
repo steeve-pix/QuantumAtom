@@ -22,6 +22,8 @@ private:
     int m_height; ///< Window height in pixels
     std::string m_title; ///< Window title
 
+    GLuint m_shaderProgram = 0;
+
     // Mouse tracking state for camera control
     float m_lastMouseX = 600.0f;
     float m_lastMouseY = 500.0f;
@@ -92,6 +94,19 @@ public:
      * @param deltaTime Time elapsed since last frame
      */
     void updatePhysics(float deltaTime);
+
+    /**
+         * @brief Compiles an individual OpenGL shader stage from source code.
+         * @param type The OpenGL shader type (e.g., GL_VERTEX_SHADER, GL_FRAGMENT_SHADER)
+         * @param source The raw GLSL source code string
+         * @return The compiled shader object ID, or 0 if compilation fails
+         */
+    GLuint compileShader(GLenum type, const std::string &source);
+
+    /**
+     * @brief Initializes, compiles, and links the main OpenGL shader program.
+     */
+    void initShaders();
 
     /**
      * @brief Renders the ImGui user interface and credits overlay.
