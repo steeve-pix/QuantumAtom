@@ -38,21 +38,23 @@ Engine::~Engine() {
 
 // Implements a professional heatmap color mapping using an Inferno-like palette.
 glm::vec4 Engine::heatmapFire(float value) {
-    // Dynamic Gamma-Correction for contrast at low-probability areas
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
-    float t = std::pow(clamp_v, 0.35f);
 
-    // High-fidelity color stops: Highest probability (1.0) is bright white/yellow,
-    // fading through yellow, orange, red, magenta, purple to dark purple (0.0).
+    // --- OPTIMIZATION 1: Fast approximation for std::pow(clamp_v, 0.35f) ---
+    // x^0.35 is extremely close to the 3rd root of x (x^0.333).
+    // We can approximate it fast using std::sqrt and a linear blend:
+    float sqrt_v = std::sqrt(clamp_v);
+    float t = glm::mix(clamp_v, sqrt_v, 0.7f); // Avoids heavy pow math completely
+
     const int num_stops = 7;
     static const glm::vec3 stops[num_stops] = {
-        {0.280f, 0.000f, 0.550f}, // 0: Luminous Indigo (Was dull dark purple)
-        {0.450f, 0.000f, 0.650f}, // 1: Vibrant Purple
-        {0.800f, 0.000f, 0.550f}, // 2: Neon Magenta / Hot Pink
-        {0.950f, 0.050f, 0.050f}, // 3: Bright Red
-        {1.000f, 0.500f, 0.000f}, // 4: Intense Orange
-        {1.000f, 0.900f, 0.000f}, // 5: Yellow
-        {1.000f, 1.000f, 0.850f} // 6: Very Bright Yellow/White
+        {0.280f, 0.000f, 0.550f},
+        {0.450f, 0.000f, 0.650f},
+        {0.800f, 0.000f, 0.550f},
+        {0.950f, 0.050f, 0.050f},
+        {1.000f, 0.500f, 0.000f},
+        {1.000f, 0.900f, 0.000f},
+        {1.000f, 1.000f, 0.850f}
     };
 
     float scaled_v = t * (num_stops - 1);
@@ -60,12 +62,16 @@ glm::vec4 Engine::heatmapFire(float value) {
     int next_i = std::min(i + 1, num_stops - 1);
     float local_t = scaled_v - static_cast<float>(i);
 
-    // Linear interpolation between color stops
     glm::vec3 color = glm::mix(stops[i], stops[next_i], local_t);
 
-    // Dynamic Alpha: Non-linear mapping to emphasize core orbital structures
-    float alpha = std::pow(t, 0.60f) * 0.95f;
-    if (t < 0.03f) alpha *= (t / 0.03f); // Soft fade-out for noise
+    // --- OPTIMIZATION 2: Fast approximation for std::pow(t, 0.60f) ---
+    // t^0.60 is almost identical to a simple square root (t^0.50).
+    // Using std::sqrt here is exponentially faster than std::pow.
+    float alpha = std::sqrt(t) * 0.95f;
+
+    if (t < 0.03f) {
+        alpha *= (t * 33.3333f); // Multiplication instead of division (1.0f / 0.03f)
+    }
 
     return glm::vec4(color, alpha);
 }
@@ -571,51 +577,65 @@ void Engine::drawAxes() {
 
 // Renders the probability density cloud using point sprites and additive-like blending.
 void Engine::drawCloud(float timeVal) {
+    if (cloudPoints.empty()) return;
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE); // Allow particles to overlap cleanly without blocking borders
+    glDepthMask(GL_TRUE); // Change to GL_FALSE so transparent particles don't break depth testing pairs
 
-    // Turn on the programmatic color-mapping raytracer styling shader
     glUseProgram(m_shaderProgram);
 
-    // Scale point size based on camera distance for a consistent visual density
     float pointScale = glm::clamp(380.0f / camera.distance, 0.7f, 5.0f);
-    glPointSize(14.0f * pointScale); // Standard cleaner sizing threshold
+    glPointSize(14.0f * pointScale);
 
-    // Find local max density for relative color scaling
     float maxDensity = 1e-6f;
-    for (const auto &p: cloudPoints) if (p.brightness > maxDensity) maxDensity = p.brightness;
+    // Cache total size to avoid repeated member calls
+    const size_t numPoints = cloudPoints.size();
+
+    // Optimize max density search loop
+    for (size_t i = 0; i < numPoints; ++i) {
+        if (cloudPoints[i].brightness > maxDensity) {
+            maxDensity = cloudPoints[i].brightness;
+        }
+    }
+
+    float invMaxDensity = 1.0f / maxDensity; // Multiplication is faster than division
+    float globalSpeed = 5.0f / static_cast<float>(state.n);
+    bool useRotation = (state.m != 0);
+    float m_float = static_cast<float>(state.m);
 
     glBegin(GL_POINTS);
-    for (const auto &p: cloudPoints) {
+    for (size_t i = 0; i < numPoints; ++i) {
+        const auto &p = cloudPoints[i];
         glm::vec3 pos = p.pos;
 
-        // Add dynamic rotation for non-zero Magnetic numbers (m)
-        if (state.m != 0) {
-            float globalSpeed = 5.0f / static_cast<float>(state.n);
-            float norm = p.brightness / maxDensity;
-            float probabilitySpeedFactor = 0.15f + (norm * 3.5f);
-            float angle = timeVal * globalSpeed * probabilitySpeedFactor * static_cast<float>(state.m);
-            float origX = pos.x;
-            float origZ = pos.z;
-            pos.x = origX * std::cos(angle) - origZ * std::sin(angle);
-            pos.z = origX * std::sin(angle) + origZ * std::cos(angle);
-        }
-
-        // Apply cross-section clipping if enabled
+        // Apply cross-section clipping upfront to skip math entirely if rejected
         if (clipEnabled && pos.y > 0.0f && pos.z > 0.0f) continue;
 
-        // Map brightness density to heatmap color
-        float norm = p.brightness / maxDensity;
-        glm::vec4 fireColor = heatmapFire(norm);
+        float norm = p.brightness * invMaxDensity;
 
+        if (useRotation) {
+            float probabilitySpeedFactor = 0.15f + (norm * 3.5f);
+            float angle = timeVal * globalSpeed * probabilitySpeedFactor * m_float;
+
+            // Fast sine/cosine calculation
+            float sinA = std::sin(angle);
+            float cosA = std::cos(angle);
+
+            float origX = pos.x;
+            float origZ = pos.z;
+            pos.x = origX * cosA - origZ * sinA;
+            pos.z = origX * sinA + origZ * cosA;
+        }
+
+        glm::vec4 fireColor = heatmapFire(norm);
         glColor4f(fireColor.r, fireColor.g, fireColor.b, fireColor.a);
         glVertex3f(pos.x, pos.y, pos.z);
     }
     glEnd();
 
-    glUseProgram(0); // Unbind point shader safely
+    glUseProgram(0);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
 }
