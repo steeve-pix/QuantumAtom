@@ -346,9 +346,12 @@ void Engine::renderUI() {
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
     ImGui::SetNextWindowBgAlpha(0.35f); //
 
-    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-                                    ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration |
+                                    ImGuiWindowFlags_AlwaysAutoResize |
+                                    ImGuiWindowFlags_NoSavedSettings |
+                                    ImGuiWindowFlags_NoFocusOnAppearing |
+                                    ImGuiWindowFlags_NoNav |
+                                    ImGuiWindowFlags_NoMove;
 
     if (ImGui::Begin("Credits Overlay", nullptr, window_flags)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.8f, 1.0f, 1.0f));
