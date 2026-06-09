@@ -64,8 +64,8 @@ glm::vec4 Engine::heatmapFire(float value) {
     glm::vec3 color = glm::mix(stops[i], stops[next_i], local_t);
 
     // Dynamic Alpha: Non-linear mapping to emphasize core orbital structures
-    float alpha = std::pow(t, 0.75f) * 0.95f;
-    if (t < 0.05f) alpha *= (t / 0.05f); // Soft fade-out for noise
+    float alpha = std::pow(t, 0.60f) * 0.95f;
+    if (t < 0.03f) alpha *= (t / 0.03f); // Soft fade-out for noise
 
     return glm::vec4(color, alpha);
 }
