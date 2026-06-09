@@ -102,6 +102,9 @@ void Engine::regenerateCloud() {
 
         float density = QuantumSimulation::computeProbability(r, theta, phi, state);
 
+        float compensation = (u > 0.0001f) ? (1.5f * std::sqrt(u)) : 1.0f;
+        float adjustedDensity = density * compensation;
+
         // Only keep the point if it passes the probability threshold
         if (m_dis(m_gen) * maxTestDensity < density) {
             glm::vec3 pos(r * std::sin(theta) * std::cos(phi), r * std::cos(theta),
