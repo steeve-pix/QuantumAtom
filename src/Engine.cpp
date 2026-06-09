@@ -61,7 +61,7 @@ glm::vec4 Engine::heatmapFire(float value) {
     float local_t = scaled_v - static_cast<float>(i);
 
     // Linear interpolation between color stops
-    glm::vec3 color = stops[i] + local_t * (stops[next_i] - stops[i]);
+    glm::vec3 color = glm::mix(stops[i], stops[next_i], local_t);
 
     // Dynamic Alpha: Non-linear mapping to emphasize core orbital structures
     float alpha = std::pow(t, 0.75f) * 0.95f;
