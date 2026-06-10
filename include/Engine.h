@@ -29,8 +29,8 @@ private:
      * GPU Buffers (VBOs):
      * We store particle data directly on the graphics card for high performance.
      */
-    GLuint m_posVbo = 0;   // Particle positions
-    GLuint m_normVbo = 0;  // Normalised brightness values
+    GLuint m_posVbo = 0; // Particle positions
+    GLuint m_normVbo = 0; // Normalised brightness values
     GLuint m_speedVbo = 0; // Per-point rotation speed factors
     bool m_vboDirty = true; // Tracks if buffers need re-uploading
 
@@ -80,9 +80,13 @@ private:
 
     // Utility functions for initialization
     glm::vec4 heatmapFire(float value);
+
     void initGlfwWindow();
+
     void initOpenGL();
+
     void initImGui();
+
     void setupCallbacks();
 
 public:
@@ -98,21 +102,31 @@ public:
     bool m_isInitialized = false;
 
     Engine(int width, int height, const std::string &title);
+
     ~Engine();
 
     // Core application logic
     void regenerateCloud();
+
     void resetSimulation();
+
     void regenerateSinglePoint(CloudPoint &p);
+
     void updatePhysics(float deltaTime);
 
     // Rendering pipeline
     GLuint compileShader(GLenum type, const std::string &source);
+
     void initShaders();
+
     void renderUI();
+
     void drawScene(float currentFrameTime, float deltaTime);
+
     void drawAxes();
+
     void drawCloud(float timeVal);
+
     void drawActiveElectron();
 };
 

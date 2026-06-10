@@ -8,10 +8,10 @@
  * It stores physical properties that determine its behavior and appearance.
  */
 struct CloudPoint {
-    glm::vec3 pos;           // Position in 3D space
-    glm::vec3 vel;           // Velocity (used for legacy or future physics)
-    float brightness;        // Probability density at this point
-    float speedFactor;       // Individual rotation speed variation
+    glm::vec3 pos; // Position in 3D space
+    glm::vec3 vel; // Velocity (used for legacy or future physics)
+    float brightness; // Probability density at this point
+    float speedFactor; // Individual rotation speed variation
 };
 
 /*

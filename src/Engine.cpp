@@ -722,12 +722,16 @@ void Engine::drawCloud(float timeVal) {
             speeds[i] = p.speedFactor;
         }
 
-        if (!m_posVbo) glGenBuffers(1, &m_posVbo);
-        if (!m_normVbo) glGenBuffers(1, &m_normVbo);
-        if (!m_speedVbo) glGenBuffers(1, &m_speedVbo);
+        if (!m_posVbo)
+            glGenBuffers(1, &m_posVbo);
+        if (!m_normVbo)
+            glGenBuffers(1, &m_normVbo);
+        if (!m_speedVbo)
+            glGenBuffers(1, &m_speedVbo);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (positions.size() * sizeof(float)), positions.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (positions.size() * sizeof(float)), positions.data(),
+                     GL_STATIC_DRAW);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_normVbo);
         glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (norms.size() * sizeof(float)), norms.data(), GL_STATIC_DRAW);
