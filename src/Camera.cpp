@@ -6,22 +6,16 @@
 #include <algorithm>
 
 void Camera::update(int width, int height, float deltaTime) {
-    /* 
-     * Exponential decay for smooth interpolation.
-     * This creates the "weighted" feel where the camera slows down as it approaches its target.
-     */
+    // Apply exponential smoothing for fluid camera movement
     float blend = 1.0f - std::exp(-smoothness * deltaTime);
 
-    // Update current values towards the targets
+    // Interpolate towards target orientation and position
     yaw += (targetYaw - yaw) * blend;
     pitch += (targetPitch - pitch) * blend;
     distance += (targetDistance - distance) * blend;
     targetPos += (destinationTargetPos - targetPos) * blend;
 
-    /*
-     * Convert spherical coordinates (distance, yaw, pitch) to Cartesian (x, y, z).
-     * This defines the camera's relative position to the target.
-     */
+    // Convert spherical coordinates to Cartesian for camera placement
     glm::vec3 offset(
         distance * std::cos(glm::radians(yaw)) * std::cos(glm::radians(pitch)),
         distance * std::sin(glm::radians(pitch)),
@@ -30,16 +24,12 @@ void Camera::update(int width, int height, float deltaTime) {
 
     glm::vec3 camPos = targetPos + offset;
 
-    /*
-     * Build the View and Projection matrices.
-     * View: Transforms world coordinates to camera space.
-     * Projection: Handles perspective (objects getting smaller in the distance).
-     */
+    // Construct view and projection matrices
     glm::mat4 view = glm::lookAt(camPos, targetPos, glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), static_cast<float>(width) / static_cast<float>(height),
                                       0.1f, 6000.0f);
 
-    // Apply matrices to the OpenGL pipeline
+    // Load matrices into the legacy OpenGL pipeline
     glMatrixMode(GL_PROJECTION);
     glLoadMatrixf(glm::value_ptr(proj));
     glMatrixMode(GL_MODELVIEW);
@@ -50,7 +40,7 @@ void Camera::pan(float deltaX, float deltaY) {
     float radYaw = glm::radians(yaw);
     float radPitch = glm::radians(pitch);
 
-    // Identify the forward vector based on current rotation
+    // Calculate camera direction vectors for local movement
     glm::vec3 forward(
         -std::cos(radYaw) * std::cos(radPitch),
         -std::sin(radPitch),
@@ -58,15 +48,14 @@ void Camera::pan(float deltaX, float deltaY) {
     );
     forward = glm::normalize(forward);
 
-    // Calculate 'right' and 'up' vectors using cross products
     glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
     glm::vec3 right = glm::normalize(glm::cross(forward, worldUp));
     glm::vec3 up = glm::cross(right, forward);
 
-    // Scale panning speed based on distance to keep movement intuitive
+    // Adjust panning speed relative to camera distance
     float factor = distance * 0.0012f;
 
-    // Shift the target position in the camera's local plane
+    // Move the destination target on the plane perpendicular to view direction
     destinationTargetPos += right * (-deltaX * factor) + up * (-deltaY * factor);
 }
 

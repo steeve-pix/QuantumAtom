@@ -4,41 +4,32 @@
 
 int main() {
     try {
-        /* 
-         * First, we initialize the Engine. 
-         * This sets up our window, the graphics context, and our simulation state.
-         */
+        // Initialize the visualization engine with a 720p window
         Engine engine(1280, 720, "QuantumAtom - Hydrogen-like Orbital Visualizer");
 
         auto lastTime = std::chrono::high_resolution_clock::now();
 
-        /*
-         * This is the "Game Loop". 
-         * It runs continuously, updating and rendering until the user decides to quit.
-         */
+        // Main application loop: continues until the window is closed
         while (!glfwWindowShouldClose(engine.window)) {
-            // We calculate 'deltaTime' to ensure smooth movement regardless of frame rate.
+            // Compute time elapsed since the last frame for smooth animations
             auto currentTime = std::chrono::high_resolution_clock::now();
             float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
             lastTime = currentTime;
 
-            // Handle user inputs (mouse, keyboard).
+            // Process operating system events and user input
             glfwPollEvents();
 
-            // Update the internal physics of our world.
+            // Update simulation logic and physics
             engine.updatePhysics(deltaTime);
 
-            // Draw the atom cloud and the user interface.
+            // Render the 3D scene and the ImGui overlay
             engine.drawScene(static_cast<float>(glfwGetTime()), deltaTime);
 
-            // Swap the back buffer to the front so we see the new frame.
+            // Display the rendered frame by swapping buffers
             glfwSwapBuffers(engine.window);
         }
     } catch (const std::exception &e) {
-        /*
-         * If the program crashes or fails to start, 
-         * we catch the error here and let the user know what happened.
-         */
+        // Log any unhandled exceptions to the standard error stream
         std::cerr << "Fatal error: " << e.what() << std::endl;
         return EXIT_FAILURE;
     }

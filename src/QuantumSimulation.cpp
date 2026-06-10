@@ -6,10 +6,7 @@
 #define PI 3.14159265358979323846f
 #endif
 
-/*
- * Implementation of the Associated Legendre Polynomials.
- * In quantum mechanics, these describe the angular variation of the wavefunction.
- */
+// Computes the Associated Legendre Polynomials for the angular component of the wavefunction
 float QuantumSimulation::associatedLegendre(int l, int m, float x) {
     int absM = std::abs(m);
     if (absM > l) return 0.0f;
@@ -39,10 +36,7 @@ float QuantumSimulation::associatedLegendre(int l, int m, float x) {
     return pmmp1;
 }
 
-/*
- * Implementation of the Associated Laguerre Polynomials.
- * These describe the radial component of the electron's probability distribution.
- */
+// Computes the Associated Laguerre Polynomials for the radial component of the wavefunction
 float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
     float f_alpha = static_cast<float>(alpha);
     if (k == 0) return 1.0f;
@@ -61,21 +55,19 @@ float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
     return L2;
 }
 
-/*
- * Spherical Harmonics: Defines the complex spatial shapes of the orbitals.
- * Combines the angular terms into a single probability value.
- */
+// Computes the spherical harmonic component, defining the 3D shape of the orbital
 float QuantumSimulation::sphericalHarmonic(int l, int m, float theta, float phi) {
     int absM = std::abs(m);
     float Plm = associatedLegendre(l, absM, std::cos(theta));
 
-    // Normalization factor using Gamma functions for precision at higher quantum numbers.
+    // Factorial normalization using log-gamma for numerical stability
     float logNumFact = std::lgammaf(static_cast<float>(l - absM + 1));
     float logDenFact = std::lgammaf(static_cast<float>(l + absM + 1));
 
     float logNormSq = std::log(2.0f * static_cast<float>(l) + 1.0f) - std::log(4.0f * PI) + logNumFact - logDenFact;
     float norm = std::exp(0.5f * logNormSq);
 
+    // Real-valued spherical harmonics for visualization
     if (m > 0) {
         return std::sqrt(2.0f) * norm * Plm * std::cos(static_cast<float>(m) * phi);
     } else if (m < 0) {
@@ -85,19 +77,16 @@ float QuantumSimulation::sphericalHarmonic(int l, int m, float theta, float phi)
     return norm * Plm;
 }
 
-/*
- * Main entry point for probability calculations.
- * Computes the total wavefunction (radial * angular) and returns the squared intensity.
- */
+// Entry point for probability density calculations based on quantum numbers
 float QuantumSimulation::computeProbability(float r, float theta, float phi, const QuantumState &state) {
-    float a0 = 4.0f; // Bohr radius (scaled for visualization)
+    float a0 = 4.0f; // Scaled Bohr radius
     float n_f = static_cast<float>(state.n);
     float rho = (2.0f * r) / (static_cast<float>(state.n) * a0);
 
     int k = state.n - state.l - 1;
     int alpha = 2 * state.l + 1;
 
-    // Radial normalization
+    // Normalize the radial component
     float logCubeScale = 3.0f * std::log(2.0f / (n_f * a0));
     float logTopFact = std::lgammaf(static_cast<float>(state.n - state.l));
     float logBottomFact = std::lgammaf(static_cast<float>(state.n + state.l + 1));
@@ -105,16 +94,14 @@ float QuantumSimulation::computeProbability(float r, float theta, float phi, con
     float logRadNormSq = logCubeScale - std::log(2.0f * n_f) + logTopFact - logBottomFact;
     float radNorm = std::exp(0.5f * logRadNormSq);
 
-    // Radial component
+    // Calculate radial part of the wavefunction
     float radial = radNorm * std::exp(-rho / 2.0f) * std::pow(rho, static_cast<float>(state.l)) *
                    associatedLaguerre(k, alpha, rho);
 
-    // Angular component
+    // Calculate angular part of the wavefunction
     float angular = sphericalHarmonic(state.l, state.m, theta, phi);
 
-    // Wavefunction (psi) = Radial * Angular
+    // Total wavefunction (psi) and its square (probability density)
     float psi = radial * angular;
-
-    // Probability Density = |psi|^2
     return psi * psi;
 }

@@ -12,32 +12,28 @@
 #include "Camera.h"
 #include "QuantumTypes.h"
 
-/*
- * The Engine class is the central coordinator of the application.
- * It manages the window lifecycle, OpenGL state, user input, and 
- * coordinates between the simulation and the renderer.
+/**
+ * @class Engine
+ * @brief Orchestrates the application lifecycle, including rendering, simulation, and user interaction.
  */
 class Engine {
 private:
-    int m_width;
-    int m_height;
-    std::string m_title;
+    int m_width;  /**< Window width */
+    int m_height; /**< Window height */
+    std::string m_title; /**< Window title */
 
-    GLuint m_shaderProgram = 0;
+    GLuint m_shaderProgram = 0; /**< Handle for the compiled GLSL shader program */
 
-    /*
-     * GPU Buffers (VBOs):
-     * We store particle data directly on the graphics card for high performance.
-     */
-    GLuint m_posVbo = 0; // Particle positions
-    GLuint m_normVbo = 0; // Normalised brightness values
-    GLuint m_speedVbo = 0; // Per-point rotation speed factors
-    bool m_vboDirty = true; // Tracks if buffers need re-uploading
+    /** @name GPU Buffers */
+    ///@{
+    GLuint m_posVbo = 0;    /**< VBO for point positions */
+    GLuint m_normVbo = 0;   /**< VBO for normalized probability values */
+    GLuint m_speedVbo = 0;  /**< VBO for individual rotation speed factors */
+    bool m_vboDirty = true; /**< Flag indicating if GPU buffers need updating */
+    ///@}
 
-    /*
-     * Shader Locations:
-     * Handles for communicating with our GLSL programs.
-     */
+    /** @name Shader Uniform/Attribute Locations */
+    ///@{
     GLint m_attrPos = -1;
     GLint m_attrNorm = -1;
     GLint m_attrSpeed = -1;
@@ -47,87 +43,88 @@ private:
     GLint m_uUseRotation = -1;
     GLint m_uPointScale = -1;
     GLint m_uClipEnabled = -1;
+    ///@}
 
-    /*
-     * Multithreading:
-     * Cloud generation is heavy, so we run it on a background thread 
-     * to keep the UI responsive.
-     */
-    std::thread m_buildThread;
-    std::mutex m_swapMutex;
-    std::vector<CloudPoint> m_pendingCloud;
-    std::atomic<bool> m_cloudReady{false};
-    std::atomic<bool> m_buildCancelled{false};
-    std::atomic<int> m_buildProgress{0}; // Percentage completion
+    /** @name Multithreading Management */
+    ///@{
+    std::thread m_buildThread;                 /**< Thread for background cloud generation */
+    std::mutex m_swapMutex;                    /**< Protects access to pending cloud data */
+    std::vector<CloudPoint> m_pendingCloud;    /**< Buffer for newly generated cloud points */
+    std::atomic<bool> m_cloudReady{false};     /**< Flag indicating if pending cloud is ready to swap */
+    std::atomic<bool> m_buildCancelled{false}; /**< Signal to abort current build thread */
+    std::atomic<int> m_buildProgress{0};       /**< Percentage of generation completion */
+    ///@}
 
-    float m_cachedMaxDensity = 1e-6f;
+    float m_cachedMaxDensity = 1e-6f; /**< Maximum probability density for sampling */
 
-    // Input state
+    /** @name User Input State */
+    ///@{
     float m_lastMouseX = 600.0f;
     float m_lastMouseY = 500.0f;
     bool m_firstMouse = true;
     int m_mouseButtonDown = -1;
+    ///@}
 
-    // Performance metrics
+    /** @name Performance Metrics */
+    ///@{
     float m_fps = 0.0f;
     float m_frameTimeMs = 0.0f;
     double m_lastFpsUpdateTime = 0.0;
     int m_frameCount = 0;
+    ///@}
 
-    // Random number generation
+    /** @name Random Number Generation */
+    ///@{
     std::mt19937 m_gen;
     std::uniform_real_distribution<float> m_dis;
+    ///@}
 
-    // Utility functions for initialization
+    /** @name Initialization Helpers */
+    ///@{
     glm::vec4 heatmapFire(float value);
-
     void initGlfwWindow();
-
     void initOpenGL();
-
     void initImGui();
-
     void setupCallbacks();
+    ///@}
 
 public:
-    GLFWwindow *window = nullptr;
-    Camera camera;
-    QuantumState state;
-    std::vector<CloudPoint> cloudPoints;
+    GLFWwindow *window = nullptr; /**< GLFW window handle */
+    Camera camera;                /**< Main viewing camera */
+    QuantumState state;           /**< Current quantum configuration */
+    std::vector<CloudPoint> cloudPoints; /**< Current active set of points for rendering */
 
-    const int maxPoints = 2.5e5;
-    bool clipEnabled = false;
-    float clipPlaneZ = 30.0f;
-    float electronAngle = 0.0f;
-    bool m_isInitialized = false;
+    const int maxPoints = 2.5e5; /**< Total number of points in the probability cloud */
+    bool clipEnabled = false;    /**< Toggle for cross-section clipping */
+    float clipPlaneZ = 30.0f;    /**< Distance of the clipping plane */
+    float electronAngle = 0.0f;  /**< Current orbital rotation angle for the shell visualization */
+    bool m_isInitialized = false; /**< Initialization status flag */
 
     Engine(int width, int height, const std::string &title);
-
     ~Engine();
 
-    // Core application logic
+    /** @brief Initiates background generation of the probability cloud. */
     void regenerateCloud();
 
+    /** @brief Resets simulation state and camera. */
     void resetSimulation();
 
+    /** @brief Generates a single point based on current probability density. */
     void regenerateSinglePoint(CloudPoint &p);
 
+    /** @brief Updates logical state for each frame. */
     void updatePhysics(float deltaTime);
 
-    // Rendering pipeline
+    /** @name Rendering Functions */
+    ///@{
     GLuint compileShader(GLenum type, const std::string &source);
-
     void initShaders();
-
     void renderUI();
-
     void drawScene(float currentFrameTime, float deltaTime);
-
     void drawAxes();
-
     void drawCloud(float timeVal);
-
     void drawActiveElectron();
+    ///@}
 };
 
 #endif

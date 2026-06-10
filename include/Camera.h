@@ -3,39 +3,44 @@
 
 #include <glm/glm.hpp>
 
-/*
- * The Camera class manages the user's perspective in the 3D scene.
- * It uses target-based interpolation to provide smooth, cinematic movement.
+/**
+ * @class Camera
+ * @brief Manages the 3D camera system with smooth interpolation.
  */
 class Camera {
 public:
-    // Current state (updated every frame)
+    /** @brief Current orientation and distance */
     float yaw = -40.0f;
     float pitch = 25.0f;
     float distance = 380.0f;
     glm::vec3 targetPos = glm::vec3(0.0f);
 
-    // Target state (where we want to be)
+    /** @brief Desired orientation and distance for interpolation */
     float targetYaw = -40.0f;
     float targetPitch = 25.0f;
     float targetDistance = 380.0f;
     glm::vec3 destinationTargetPos = glm::vec3(0.0f);
 
-    float smoothness = 2.5f;
+    float smoothness = 2.5f; /**< Controls how fast the camera reaches its target */
 
-    /* 
-     * Updates the camera position and orientation based on the elapsed time.
-     * Calculates the view and projection matrices and sends them to the GPU.
+    /**
+     * @brief Updates camera state and applies smoothing.
+     * @param width Viewport width
+     * @param height Viewport height
+     * @param deltaTime Time elapsed since last frame
      */
     void update(int width, int height, float deltaTime);
 
-    /* 
-     * Pans the camera target based on mouse movement.
+    /**
+     * @brief Pans the camera's look-at target.
+     * @param deltaX Horizontal movement delta
+     * @param deltaY Vertical movement delta
      */
     void pan(float deltaX, float deltaY);
 
-    /*
-     * Returns the view matrix for the current camera position and orientation.
+    /**
+     * @brief Computes the view matrix.
+     * @return 4x4 view transformation matrix
      */
     glm::mat4 getViewMatrix() const;
 };

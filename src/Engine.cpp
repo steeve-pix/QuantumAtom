@@ -12,9 +12,7 @@
 #define PI 3.141592653589793238462643383279502884f
 #endif
 
-/*
- * Engine Constructor: Sets up the initial application state.
- */
+// Constructor: Initializes window, OpenGL, ImGui, and starts the initial cloud generation
 Engine::Engine(int width, int height, const std::string &title)
     : m_width(width), m_height(height), m_title(title), m_dis(0.0f, 1.0f) {
     std::random_device rd;
@@ -27,11 +25,8 @@ Engine::Engine(int width, int height, const std::string &title)
     regenerateCloud();
 }
 
-/*
- * Engine Destructor: Safely cleans up resources.
- */
+// Destructor: Ensures background threads are joined and OpenGL resources are released
 Engine::~Engine() {
-    // Terminate the background thread before cleaning up OpenGL contexts.
     m_buildCancelled.store(true);
     if (m_buildThread.joinable())
         m_buildThread.join();
@@ -48,9 +43,7 @@ Engine::~Engine() {
     glfwTerminate();
 }
 
-/*
- * Legacy CPU-based heatmap calculation (preserved for reference).
- */
+// Legacy CPU-side heatmap lookup (kept for historical reference/debugging)
 glm::vec4 Engine::heatmapFire(float value) {
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
     float t = std::pow(clamp_v, 0.35f);
@@ -78,12 +71,8 @@ glm::vec4 Engine::heatmapFire(float value) {
     return glm::vec4(color, alpha);
 }
 
-/*
- * Asynchronously regenerates the electron cloud on a background thread.
- * Uses Monte Carlo rejection sampling to match the probability density function.
- */
+// Starts a background thread to generate new probability cloud points via rejection sampling
 void Engine::regenerateCloud() {
-    // Stop any ongoing generation process.
     m_buildCancelled.store(true);
     if (m_buildThread.joinable())
         m_buildThread.join();
@@ -103,10 +92,7 @@ void Engine::regenerateCloud() {
         const float maxR = 6.0f * static_cast<float>(capturedState.n * capturedState.n) * 1.5f;
         const float peakR = static_cast<float>(capturedState.n * capturedState.n) * a0;
 
-        /*
-         * First, search for the maximum probability density in the current state.
-         * This value is needed to normalize the rejection sampling.
-         */
+        // Estimate maximum probability density for the current state to normalize sampling
         float maxTestDensity = 0.0f;
         for (int i = 0; i < 3000 && !m_buildCancelled.load(); ++i) {
             float testR = (i < 1500)
@@ -120,16 +106,13 @@ void Engine::regenerateCloud() {
         if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
         maxTestDensity *= 1.15f;
 
-        /*
-         * Rejection Sampling Loop:
-         * Generates random points and accepts them based on the probability distribution.
-         */
         std::vector<CloudPoint> newCloud;
         newCloud.reserve(targetPoints);
 
         int maxAttempts = targetPoints * 25;
         int attempts = 0;
 
+        // Monte Carlo rejection sampling loop
         while (static_cast<int>(newCloud.size()) < targetPoints
                && attempts < maxAttempts
                && !m_buildCancelled.load()) {
@@ -150,7 +133,6 @@ void Engine::regenerateCloud() {
                 float spd = 0.3f + (dis(gen) * 2.2f);
                 newCloud.push_back({pos, glm::vec3(0.0f), density, spd});
 
-                // Periodic progress updates
                 if ((newCloud.size() & 0xFF) == 0)
                     m_buildProgress.store((int) (newCloud.size() * 100 / targetPoints));
             }
@@ -158,7 +140,7 @@ void Engine::regenerateCloud() {
 
         if (m_buildCancelled.load()) return;
 
-        // Fill remaining slots if sampling was incomplete
+        // Pad the vector if we didn't reach the target number of points
         while (static_cast<int>(newCloud.size()) < targetPoints)
             newCloud.push_back({{0, 0, 0}, {0, 0, 0}, 0.0f, 1.0f});
 
@@ -167,7 +149,7 @@ void Engine::regenerateCloud() {
             maxD = std::max(maxD, p.brightness);
 
         {
-            // Atomically swap the new cloud into the standby buffer.
+            // Thread-safe swap of the generated cloud
             std::lock_guard<std::mutex> lock(m_swapMutex);
             m_pendingCloud = std::move(newCloud);
             m_cachedMaxDensity = maxD;
@@ -177,9 +159,7 @@ void Engine::regenerateCloud() {
     });
 }
 
-/*
- * Returns the simulation to a default state (Hydrogen ground state).
- */
+// Resets all simulation parameters to ground state (n=1, l=0, m=0)
 void Engine::resetSimulation() {
     state.n = 1;
     state.l = 0;
@@ -194,49 +174,30 @@ void Engine::resetSimulation() {
     std::cout << "[System] Simulation environment successfully reset.\n";
 }
 
-/*
- * Legacy function for single-point regeneration.
- */
+// Synchronous generation of a single point (legacy method)
 void Engine::regenerateSinglePoint(CloudPoint &p) {
-    // 1. Dynamic bounding radius based on your current scaling
     const float maxR = 12.0f * static_cast<float>(state.n * state.n);
-
-    // 2. We need a target to compare the probability against.
-    // Since max density drops sharply as 'n' increases, we scale our maximum target.
-    // For n=4, a target max around 0.0001f to 0.001f works well, or use your m_cachedMaxDensity.
     float maxTargetProb = m_cachedMaxDensity;
 
     while (true) {
-        // Pick a random spot in spherical coordinates
         float r = std::cbrt(m_dis(m_gen)) * maxR;
         float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
         float phi = 2.0f * PI * m_dis(m_gen);
 
-        // Compute the probability at this exact spot
         float prob = QuantumSimulation::computeProbability(r, theta, phi, state);
-
-        // Standard Rejection Sampling:
-        // Pick a random threshold. If the probability is higher, ACCEPT the point!
         float threshold = m_dis(m_gen) * maxTargetProb;
         if (prob > threshold) {
-
-            // Map the accepted coordinates to 3D Cartesian space
             p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi),
                               r * std::sin(theta) * std::sin(phi),
                               r * std::cos(theta));
             p.vel = glm::vec3(0.0f);
-
-            // Store the raw probability or normalized brightness for your shader
             p.brightness = prob;
-
-            return; // We found a valid point, exit the function!
+            return;
         }
     }
 }
 
-/*
- * Logic for frame-by-frame updates of visual elements (like the orbital sphere).
- */
+// Updates time-based physics variables for the current frame
 void Engine::updatePhysics(float deltaTime) {
     float orbitSpeed = 4.5f / static_cast<float>(state.n * state.n);
     electronAngle += orbitSpeed * deltaTime;
@@ -244,9 +205,7 @@ void Engine::updatePhysics(float deltaTime) {
         electronAngle = std::fmod(electronAngle, 2.0f * PI);
 }
 
-/*
- * Shader compilation helper: Processes GLSL source into an OpenGL shader object.
- */
+// Utility to compile and check for errors in GLSL shaders
 GLuint Engine::compileShader(GLenum type, const std::string &source) {
     GLuint shader = glCreateShader(type);
     const char *src = source.c_str();
@@ -263,13 +222,9 @@ GLuint Engine::compileShader(GLenum type, const std::string &source) {
     return shader;
 }
 
-/*
- * Shader System:
- * We move rotation and color calculation to the GPU (vertex shader) 
- * for maximum performance.
- */
+// Compiles and links the GLSL program used for point cloud rendering
 void Engine::initShaders() {
-    // Vertex Shader: Handles 3D transformations and heatmap logic.
+    // Vertex shader source: handles rotation and heatmap coloring
     const std::string vertSrc = R"GLSL(
 #version 120
 attribute vec3  aPos;
@@ -302,7 +257,6 @@ void main() {
     vDiscard = (uClipEnabled == 1 && pos.y > 0.0 && pos.z > 0.0) ? 1.0 : 0.0;
     vNorm    = aNorm;
 
-    // GLSL Heatmap Implementation
     float t  = pow(aNorm, 0.35);
     float s6 = t * 6.0;
     int   ci = int(s6);
@@ -333,7 +287,7 @@ void main() {
 }
 )GLSL";
 
-    // Fragment Shader: Handles alpha blending and clipping.
+    // Fragment shader source: handles point smoothing and clipping discard
     const std::string fragSrc = R"GLSL(
 #version 120
 varying float vNorm;
@@ -371,7 +325,6 @@ void main() {
     glDeleteShader(vs);
     glDeleteShader(fs);
 
-    // Cache location handles
     m_attrPos = glGetAttribLocation(m_shaderProgram, "aPos");
     m_attrNorm = glGetAttribLocation(m_shaderProgram, "aNorm");
     m_attrSpeed = glGetAttribLocation(m_shaderProgram, "aSpeed");
@@ -383,10 +336,7 @@ void main() {
     m_uClipEnabled = glGetUniformLocation(m_shaderProgram, "uClipEnabled");
 }
 
-/*
- * User Interface:
- * Renders the ImGui control panel and performance metrics overlay.
- */
+// Renders the ImGui interface including performance stats and theory information
 void Engine::renderUI() {
     ImGui_ImplOpenGL2_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -404,7 +354,7 @@ void Engine::renderUI() {
         m_lastFpsUpdateTime = currentTime;
     }
 
-    // Performance HUD
+    // Performance statistics HUD
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 15.0f, 15.0f),
                             ImGuiCond_Always, ImVec2(1.0f, 0.0f));
     ImGui::SetNextWindowBgAlpha(0.55f);
@@ -431,7 +381,7 @@ void Engine::renderUI() {
     }
     ImGui::End();
 
-    // Main Control Panel
+    // Main control and information panel
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(420, 680), ImGuiCond_Once);
     ImGui::Begin("Quantum Configuration & Information", nullptr,
@@ -505,7 +455,7 @@ void Engine::renderUI() {
     ImGui::EndChild();
     ImGui::End();
 
-    // Credits Overlay
+    // Credits section
     ImGui::SetNextWindowPos(
         ImVec2(static_cast<float>(m_width) - 15.0f,
                static_cast<float>(m_height) - 15.0f),
@@ -532,18 +482,15 @@ void Engine::renderUI() {
     ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 }
 
-/*
- * Render Thread: Handles the primary drawing loop and thread synchronization.
- */
+// Orchestrates the rendering of the entire scene
 void Engine::drawScene(float currentFrameTime, float deltaTime) {
-    // Check if the background thread has finished generating a new cloud.
     if (m_cloudReady.load()) {
         {
             std::lock_guard<std::mutex> lock(m_swapMutex);
             cloudPoints = std::move(m_pendingCloud);
         }
         m_cloudReady.store(false);
-        m_vboDirty = true; // Signal for GPU buffer update.
+        m_vboDirty = true;
     }
 
     glClearColor(0.05f, 0.05f, 0.08f, 1.0f);
@@ -560,9 +507,7 @@ void Engine::drawScene(float currentFrameTime, float deltaTime) {
     renderUI();
 }
 
-/*
- * Window Management: Sets up the GLFW window and graphics context.
- */
+// Initializes GLFW and creates the main application window
 void Engine::initGlfwWindow() {
     if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW.");
 
@@ -580,9 +525,7 @@ void Engine::initGlfwWindow() {
     glfwSetWindowUserPointer(window, this);
 }
 
-/*
- * Graphics API Initialization: Loads OpenGL functions and sets global state.
- */
+// Initializes Glad and configures basic OpenGL state
 void Engine::initOpenGL() {
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
         throw std::runtime_error("Failed to initialize GLAD.");
@@ -595,9 +538,7 @@ void Engine::initOpenGL() {
     initShaders();
 }
 
-/*
- * UI Initialization: Sets up the Dear ImGui context and backends.
- */
+// Configures the ImGui context and backends
 void Engine::initImGui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -608,9 +549,7 @@ void Engine::initImGui() {
     ImGui_ImplOpenGL2_Init();
 }
 
-/*
- * Event Handlers: Connects GLFW input events to engine logic.
- */
+// Sets up user input callbacks for the GLFW window
 void Engine::setupCallbacks() {
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow *win, int w, int h) {
         auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
@@ -698,35 +637,28 @@ void Engine::setupCallbacks() {
     });
 }
 
-/*
- * World Axes: Renders the RGB lines representing X, Y, and Z.
- */
+// Draws world coordinate axes (X: Red, Y: Green, Z: Blue)
 void Engine::drawAxes() {
     glPushMatrix();
     glLineWidth(2.0f);
     glBegin(GL_LINES);
-    glColor3f(1, 0, 0); // X-axis (Red)
+    glColor3f(1, 0, 0);
     glVertex3f(0, 0, 0);
     glVertex3f(120, 0, 0);
-    glColor3f(0, 1, 0); // Y-axis (Green)
+    glColor3f(0, 1, 0);
     glVertex3f(0, 0, 0);
     glVertex3f(0, 120, 0);
-    glColor3f(0, 0, 1); // Z-axis (Blue)
+    glColor3f(0, 0, 1);
     glVertex3f(0, 0, 0);
     glVertex3f(0, 0, 120);
     glEnd();
     glPopMatrix();
 }
 
-/*
- * Cloud Rendering:
- * Transforms the particle data into high-performance GPU buffers 
- * and issues the drawing command.
- */
+// Uploads cloud data to GPU and renders points using the custom shader
 void Engine::drawCloud(float timeVal) {
     if (cloudPoints.empty()) return;
 
-    // Buffer Update: Only executed when the particle cloud changes.
     if (m_vboDirty) {
         const size_t n = cloudPoints.size();
 
@@ -747,16 +679,12 @@ void Engine::drawCloud(float timeVal) {
             speeds[i] = p.speedFactor;
         }
 
-        if (!m_posVbo)
-            glGenBuffers(1, &m_posVbo);
-        if (!m_normVbo)
-            glGenBuffers(1, &m_normVbo);
-        if (!m_speedVbo)
-            glGenBuffers(1, &m_speedVbo);
+        if (!m_posVbo) glGenBuffers(1, &m_posVbo);
+        if (!m_normVbo) glGenBuffers(1, &m_normVbo);
+        if (!m_speedVbo) glGenBuffers(1, &m_speedVbo);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (positions.size() * sizeof(float)), positions.data(),
-                     GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (positions.size() * sizeof(float)), positions.data(), GL_STATIC_DRAW);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_normVbo);
         glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (norms.size() * sizeof(float)), norms.data(), GL_STATIC_DRAW);
@@ -776,7 +704,6 @@ void Engine::drawCloud(float timeVal) {
 
     glUseProgram(m_shaderProgram);
 
-    // Uniform Updates
     float pointScale = glm::clamp(380.0f / camera.distance, 0.7f, 5.0f);
     glUniform1f(m_uTime, timeVal);
     glUniform1f(m_uGlobalSpeed, 5.0f / static_cast<float>(state.n));
@@ -785,7 +712,6 @@ void Engine::drawCloud(float timeVal) {
     glUniform1f(m_uPointScale, pointScale);
     glUniform1i(m_uClipEnabled, clipEnabled ? 1 : 0);
 
-    // Attribute Binding
     glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
     glEnableVertexAttribArray(m_attrPos);
     glVertexAttribPointer(m_attrPos, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
@@ -798,7 +724,6 @@ void Engine::drawCloud(float timeVal) {
     glEnableVertexAttribArray(m_attrSpeed);
     glVertexAttribPointer(m_attrSpeed, 1, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-    // Single Draw Call for all particles
     glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(cloudPoints.size()));
 
     glDisableVertexAttribArray(m_attrPos);
@@ -807,13 +732,9 @@ void Engine::drawCloud(float timeVal) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glUseProgram(0);
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
 }
 
-/*
- * Visual Overlay: Draws the traveling sphere following classical orbital paths.
- */
+// Renders a single white point to represent a classically tracked electron
 void Engine::drawActiveElectron() {
     float radius = 14.5f * static_cast<float>(state.n * state.n);
     float x = radius * std::cos(electronAngle);
