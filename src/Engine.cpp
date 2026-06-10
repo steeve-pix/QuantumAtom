@@ -197,18 +197,6 @@ void Engine::resetSimulation() {
 /*
  * Legacy function for single-point regeneration.
  */
-// void Engine::regenerateSinglePoint(CloudPoint &p) {
-//     const float maxR = 12.0f * static_cast<float>(state.n * state.n);
-//     float r = m_dis(m_gen) * maxR * 0.98f;
-//     float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
-//     float phi = 2.0f * PI * m_dis(m_gen);
-//     p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi),
-//                       r * std::sin(theta) * std::sin(phi),
-//                       r * std::cos(theta));
-//     p.vel = glm::vec3(0.0f);
-//     p.brightness = QuantumSimulation::computeProbability(r, theta, phi, state);
-// }
-
 void Engine::regenerateSinglePoint(CloudPoint &p) {
     // 1. Dynamic bounding radius based on your current scaling
     const float maxR = 12.0f * static_cast<float>(state.n * state.n);
