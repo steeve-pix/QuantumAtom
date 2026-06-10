@@ -19,13 +19,13 @@ int main() {
 
             // Check if the user pressed any keys or moved the mouse.
             glfwPollEvents();
-            
+
             // Move things in the simulation (like the rotating electron).
             engine.updatePhysics(deltaTime);
-            
+
             // Tell the graphics card to draw the current scene.
             engine.drawScene(static_cast<float>(glfwGetTime()), deltaTime);
-            
+
             // Show the frame we just drew on the screen.
             glfwSwapBuffers(engine.window);
         }

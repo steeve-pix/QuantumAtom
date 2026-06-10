@@ -16,13 +16,13 @@
 Engine::Engine(int width, int height, const std::string &title)
     : m_width(width), m_height(height), m_title(title), m_dis(0.0f, 1.0f) {
     std::random_device rd;
-    m_gen = std::mt19937(rd()); 
+    m_gen = std::mt19937(rd());
 
-    initGlfwWindow(); 
-    initOpenGL(); 
-    initImGui(); 
-    setupCallbacks(); 
-    regenerateCloud(); 
+    initGlfwWindow();
+    initOpenGL();
+    initImGui();
+    setupCallbacks();
+    regenerateCloud();
 }
 
 // This cleans up and closes everything when the program ends.
@@ -63,7 +63,7 @@ glm::vec4 Engine::heatmapFire(float value) {
     float alpha = std::pow(t, 0.60f) * 0.95f;
 
     if (t < 0.03f) {
-        alpha *= (t / 0.03f); 
+        alpha *= (t / 0.03f);
     }
 
     return glm::vec4(color, alpha);
@@ -90,7 +90,7 @@ void Engine::regenerateCloud() {
     if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
 
     // Keep trying random spots until we have enough dots.
-    int maxAttempts = maxPoints * 25; 
+    int maxAttempts = maxPoints * 25;
     int attempts = 0;
 
     while (static_cast<int>(cloudPoints.size()) < maxPoints && attempts < maxAttempts) {
@@ -188,7 +188,7 @@ void Engine::initShaders() {
             "void main() {\n"
             "    vec2 circCoord = gl_PointCoord - vec2(0.5);\n"
             "    float distSq = dot(circCoord, circCoord);\n"
-            "    if (distSq > 0.25) discard;\n" 
+            "    if (distSq > 0.25) discard;\n"
             "    \n"
             "    float alphaIntensity = smoothstep(0.25, 0.0, distSq);\n"
             "    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * alphaIntensity);\n"
@@ -221,9 +221,9 @@ void Engine::renderUI() {
 
     float hudMargin = 15.0f;
     ImVec2 hudPos = ImVec2(io.DisplaySize.x - hudMargin, hudMargin);
-    ImVec2 hudPivot = ImVec2(1.0f, 0.0f); 
+    ImVec2 hudPivot = ImVec2(1.0f, 0.0f);
     ImGui::SetNextWindowPos(hudPos, ImGuiCond_Always, hudPivot);
-    ImGui::SetNextWindowBgAlpha(0.55f); 
+    ImGui::SetNextWindowBgAlpha(0.55f);
 
     ImGuiWindowFlags hudFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
@@ -274,7 +274,7 @@ void Engine::renderUI() {
 
     ImGui::Spacing();
     ImGui::Checkbox("Enable Cross-Section Clip", &clipEnabled);
-    if (stateChanged) regenerateCloud(); 
+    if (stateChanged) regenerateCloud();
 
     ImGui::Spacing();
     ImGui::Spacing();
@@ -330,7 +330,7 @@ void Engine::renderUI() {
     ImVec2 window_pos = ImVec2(static_cast<float>(m_width) - margin, static_cast<float>(m_height) - margin);
     ImVec2 window_pos_pivot = ImVec2(1.0f, 1.0f);
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
-    ImGui::SetNextWindowBgAlpha(0.35f); 
+    ImGui::SetNextWindowBgAlpha(0.35f);
 
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration |
                                     ImGuiWindowFlags_AlwaysAutoResize |
@@ -364,7 +364,7 @@ void Engine::renderUI() {
 
 // This is the main drawing routine. It clears the screen and calls all the other draw functions.
 void Engine::drawScene(float currentFrameTime, float deltaTime) {
-    glClearColor(0.05f, 0.05f, 0.08f, 1.0f); 
+    glClearColor(0.05f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     camera.update(m_width, m_height, deltaTime);
@@ -395,8 +395,8 @@ void Engine::initGlfwWindow() {
     }
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); 
-    glfwSetWindowUserPointer(window, this); 
+    glfwSwapInterval(1);
+    glfwSetWindowUserPointer(window, this);
 }
 
 // Loads OpenGL functions and sets up basic drawing rules.
@@ -404,11 +404,11 @@ void Engine::initOpenGL() {
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
         throw std::runtime_error("Failed to initialize GLAD.");
 
-    glEnable(GL_DEPTH_TEST); 
+    glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
 
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-    glEnable(0x8861); 
+    glEnable(0x8861);
 
     initShaders();
 }
@@ -517,15 +517,15 @@ void Engine::drawAxes() {
     glPushMatrix();
     glLineWidth(2.0f);
     glBegin(GL_LINES);
-    glColor3f(1.0f, 0.0f, 0.0f); 
+    glColor3f(1.0f, 0.0f, 0.0f);
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(120.0f, 0.0f, 0.0f);
 
-    glColor3f(0.0f, 1.0f, 0.0f); 
+    glColor3f(0.0f, 1.0f, 0.0f);
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(0.0f, 120.0f, 0.0f);
 
-    glColor3f(0.0f, 0.0f, 1.0f); 
+    glColor3f(0.0f, 0.0f, 1.0f);
     glVertex3f(0.0f, 0.0f, 0.0f);
     glVertex3f(0.0f, 0.0f, 120.0f);
     glEnd();
@@ -539,7 +539,7 @@ void Engine::drawCloud(float timeVal) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE); 
+    glDepthMask(GL_TRUE);
 
     glUseProgram(m_shaderProgram);
 
@@ -555,7 +555,7 @@ void Engine::drawCloud(float timeVal) {
         }
     }
 
-    float invMaxDensity = 1.0f / maxDensity; 
+    float invMaxDensity = 1.0f / maxDensity;
     float globalSpeed = 5.0f / static_cast<float>(state.n);
     bool useRotation = (state.m != 0);
     float m_float = static_cast<float>(state.m);

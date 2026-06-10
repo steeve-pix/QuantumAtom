@@ -9,7 +9,7 @@ void Camera::update(int width, int height, float deltaTime) {
     // This blend factor decides how much of the "distance left to travel" 
     // we cover in this frame. It creates that smooth "gliding" effect.
     float blend = 1.0f - std::exp(-smoothness * deltaTime);
-    
+
     // Move the current values a little bit closer to the target values.
     yaw += (targetYaw - yaw) * blend;
     pitch += (targetPitch - pitch) * blend;
@@ -23,7 +23,7 @@ void Camera::update(int width, int height, float deltaTime) {
         distance * std::sin(glm::radians(pitch)),
         distance * std::sin(glm::radians(yaw)) * std::cos(glm::radians(pitch))
     );
-    
+
     // The final camera position is the center point plus the offset we just calculated.
     glm::vec3 camPos = targetPos + offset;
 
@@ -61,7 +61,7 @@ void Camera::pan(float deltaX, float deltaY) {
 
     // If we are zoomed out far, we should pan faster.
     float factor = distance * 0.0012f;
-    
+
     // Move the focal point (what we are looking at) in the direction 
     // the user dragged the mouse.
     destinationTargetPos += right * (-deltaX * factor) + up * (-deltaY * factor);

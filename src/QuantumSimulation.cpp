@@ -74,7 +74,7 @@ float QuantumSimulation::sphericalHarmonic(int l, int m, float theta, float phi)
         return std::sqrt(2.0f) * norm * Plm * std::sin(static_cast<float>(absM) * phi);
     }
 
-    return norm * Plm; 
+    return norm * Plm;
 }
 
 // This is the main formula that tells us: "If I look here, what are the odds an electron is there?"
@@ -83,8 +83,8 @@ float QuantumSimulation::computeProbability(float r, float theta, float phi, con
     float n_f = static_cast<float>(state.n);
     float rho = (2.0f * r) / (static_cast<float>(state.n) * a0);
 
-    int k = state.n - state.l - 1; 
-    int alpha = 2 * state.l + 1; 
+    int k = state.n - state.l - 1;
+    int alpha = 2 * state.l + 1;
 
     float logCubeScale = 3.0f * std::log(2.0f / (n_f * a0));
     float logTopFact = std::lgammaf(static_cast<float>(state.n - state.l));

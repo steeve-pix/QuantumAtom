@@ -6,9 +6,9 @@
 // This structure represents a single dot in the 3D cloud.
 // It keeps track of where the dot is (pos) and how bright it should look.
 struct CloudPoint {
-    glm::vec3 pos;        
-    glm::vec3 vel;        
-    float brightness;     
+    glm::vec3 pos;
+    glm::vec3 vel;
+    float brightness;
     float speedFactor;
 };
 

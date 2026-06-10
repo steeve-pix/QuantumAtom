@@ -1,6 +1,7 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
+#include <atomic>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <string>
@@ -13,9 +14,9 @@
 // It brings together the 3D window, the user controls, and the math to show the atom.
 class Engine {
 private:
-    int m_width; 
-    int m_height; 
-    std::string m_title; 
+    int m_width;
+    int m_height;
+    std::string m_title;
 
     GLuint m_shaderProgram = 0;
 
@@ -43,20 +44,23 @@ private:
 
     // Private setup steps to get everything ready.
     void initGlfwWindow();
+
     void initOpenGL();
+
     void initImGui();
+
     void setupCallbacks();
 
 public:
-    GLFWwindow *window = nullptr; 
-    Camera camera; 
-    QuantumState state; 
-    std::vector<CloudPoint> cloudPoints; 
+    GLFWwindow *window = nullptr;
+    Camera camera;
+    QuantumState state;
+    std::vector<CloudPoint> cloudPoints;
 
-    const int maxPoints = 2.39e5; 
-    bool clipEnabled = false; 
-    float clipPlaneZ = 30.0f; 
-    float electronAngle = 0.0f; 
+    const int maxPoints = 2.2e5;
+    bool clipEnabled = false;
+    float clipPlaneZ = 30.0f;
+    float electronAngle = 0.0f;
     bool m_isInitialized = false;
 
     // Starts the engine with a window of a certain size and title.
@@ -79,6 +83,7 @@ public:
 
     // Prepares the graphics card to draw our dots.
     GLuint compileShader(GLenum type, const std::string &source);
+
     void initShaders();
 
     // Draws the menus and buttons on the screen.

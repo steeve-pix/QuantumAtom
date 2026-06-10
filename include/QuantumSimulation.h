@@ -15,7 +15,9 @@ private:
     // These are helper functions for the advanced math involved in quantum mechanics.
     // Think of them as special building blocks for the final calculation.
     static float associatedLegendre(int l, int m, float x);
+
     static float associatedLaguerre(int k, int alpha, float x);
+
     static float sphericalHarmonic(int l, int m, float theta, float phi);
 };
 
