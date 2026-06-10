@@ -197,16 +197,53 @@ void Engine::resetSimulation() {
 /*
  * Legacy function for single-point regeneration.
  */
+// void Engine::regenerateSinglePoint(CloudPoint &p) {
+//     const float maxR = 12.0f * static_cast<float>(state.n * state.n);
+//     float r = m_dis(m_gen) * maxR * 0.98f;
+//     float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
+//     float phi = 2.0f * PI * m_dis(m_gen);
+//     p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi),
+//                       r * std::sin(theta) * std::sin(phi),
+//                       r * std::cos(theta));
+//     p.vel = glm::vec3(0.0f);
+//     p.brightness = QuantumSimulation::computeProbability(r, theta, phi, state);
+// }
+
 void Engine::regenerateSinglePoint(CloudPoint &p) {
+    // 1. Dynamic bounding radius based on your current scaling
     const float maxR = 12.0f * static_cast<float>(state.n * state.n);
-    float r = m_dis(m_gen) * maxR * 0.98f;
-    float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
-    float phi = 2.0f * PI * m_dis(m_gen);
-    p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi),
-                      r * std::sin(theta) * std::sin(phi),
-                      r * std::cos(theta));
-    p.vel = glm::vec3(0.0f);
-    p.brightness = QuantumSimulation::computeProbability(r, theta, phi, state);
+
+    // 2. We need a target to compare the probability against.
+    // Since max density drops sharply as 'n' increases, we scale our maximum target.
+    // For n=4, a target max around 0.0001f to 0.001f works well, or use your m_cachedMaxDensity.
+    float maxTargetProb = m_cachedMaxDensity;
+
+    while (true) {
+        // Pick a random spot in spherical coordinates
+        float r = std::cbrt(m_dis(m_gen)) * maxR;
+        float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
+        float phi = 2.0f * PI * m_dis(m_gen);
+
+        // Compute the probability at this exact spot
+        float prob = QuantumSimulation::computeProbability(r, theta, phi, state);
+
+        // Standard Rejection Sampling:
+        // Pick a random threshold. If the probability is higher, ACCEPT the point!
+        float threshold = m_dis(m_gen) * maxTargetProb;
+        if (prob > threshold) {
+
+            // Map the accepted coordinates to 3D Cartesian space
+            p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi),
+                              r * std::sin(theta) * std::sin(phi),
+                              r * std::cos(theta));
+            p.vel = glm::vec3(0.0f);
+
+            // Store the raw probability or normalized brightness for your shader
+            p.brightness = prob;
+
+            return; // We found a valid point, exit the function!
+        }
+    }
 }
 
 /*
