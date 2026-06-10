@@ -41,20 +41,23 @@ Engine::~Engine() {
 }
 
 // This function calculates what color a dot should be based on its density.
-// It creates a "fire" look where higher density is brighter/hotter.
+// It uses the "inferno" palette (black -> purple -> red -> orange -> yellow).
 glm::vec4 Engine::heatmapFire(float value) {
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
-    float t = std::pow(clamp_v, 0.35f);
+    
+    // Power scale for more vibrant contrast in low-density areas.
+    float t = std::pow(clamp_v, 0.35f); // Reduced exponent to make colors "pop" faster
 
-    const int num_stops = 7;
+    const int num_stops = 8;
     static const glm::vec3 stops[num_stops] = {
-        {0.280f, 0.000f, 0.550f},
-        {0.450f, 0.000f, 0.650f},
-        {0.800f, 0.000f, 0.550f},
-        {0.950f, 0.050f, 0.050f},
-        {1.000f, 0.500f, 0.000f},
-        {1.000f, 0.900f, 0.000f},
-        {1.000f, 1.000f, 0.850f}
+        {0.050f, 0.000f, 0.100f}, // Dark Purple (lifted from black)
+        {0.250f, 0.030f, 0.350f}, // Deep Purple
+        {0.550f, 0.050f, 0.450f}, // Purple/Magenta
+        {0.850f, 0.100f, 0.350f}, // Vivid Magenta/Red
+        {1.000f, 0.300f, 0.150f}, // Bright Orange-Red
+        {1.000f, 0.600f, 0.000f}, // Solar Orange
+        {1.000f, 0.900f, 0.200f}, // Electric Yellow
+        {1.000f, 1.000f, 1.000f}  // Pure White (Maximum Energy)
     };
 
     float scaled_v = t * (num_stops - 1);
@@ -64,10 +67,13 @@ glm::vec4 Engine::heatmapFire(float value) {
 
     glm::vec3 color = glm::mix(stops[i], stops[next_i], local_t);
 
-    float alpha = std::pow(t, 0.60f) * 0.95f;
+    // Alpha ramp: boost alpha for more presence.
+    float alpha = std::pow(t, 0.40f) * 1.20f; // Increased alpha scaling
+    alpha = std::clamp(alpha, 0.0f, 1.0f);
 
-    if (t < 0.03f) {
-        alpha *= (t / 0.03f);
+    // Fade out extremely low probability points to reduce noise, but let more through.
+    if (t < 0.015f) {
+        alpha *= (t / 0.015f);
     }
 
     return glm::vec4(color, alpha);
@@ -79,6 +85,7 @@ glm::vec4 Engine::heatmapFire(float value) {
 void Engine::regenerateCloud() {
     if (m_isRegenerating) return;
     m_isRegenerating = true;
+    m_progressPoints = 0;
 
     // Launch regeneration in a background thread
     std::thread([this]() {
@@ -107,7 +114,8 @@ void Engine::regenerateCloud() {
                     float testR = threadDis(threadGen) * maxR;
                     float testTh = std::acos(2.0f * threadDis(threadGen) - 1.0f);
                     float testPh = 2.0f * PI * threadDis(threadGen);
-                    threadMaxTestDensity = std::max(threadMaxTestDensity, QuantumSimulation::computeProbability(testR, testTh, testPh, currentState));
+                    float d = QuantumSimulation::computeProbability(testR, testTh, testPh, currentState);
+                    threadMaxTestDensity = std::max(threadMaxTestDensity, d);
                 }
                 if (threadMaxTestDensity <= 1e-7f) threadMaxTestDensity = 1.0f;
 
@@ -115,8 +123,7 @@ void Engine::regenerateCloud() {
                 int maxAttempts = pointsPerThread * 50;
                 while (static_cast<int>(threadPoints.size()) < pointsPerThread && attempts < maxAttempts) {
                     attempts++;
-                    float u = threadDis(threadGen);
-                    float r = maxR * u;
+                    float r = threadDis(threadGen) * maxR;
                     float theta = std::acos(2.0f * threadDis(threadGen) - 1.0f);
                     float phi = 2.0f * PI * threadDis(threadGen);
 
@@ -129,6 +136,7 @@ void Engine::regenerateCloud() {
                                       r * std::sin(theta) * std::sin(phi));
                         float speed = 0.3f + (threadDis(threadGen) * 2.2f);
                         threadPoints.push_back({pos, glm::vec3(0.0f), density, speed});
+                        m_progressPoints++;
                     }
                 }
                 return threadPoints;
@@ -221,10 +229,13 @@ void Engine::initShaders() {
             "uniform float u_m;\n"
             "uniform int u_useRotation;\n"
             "uniform int u_clipEnabled;\n"
+            "varying float v_norm;\n"
             "void main() {\n"
             "    vec3 pos = gl_Vertex.xyz;\n"
+            "    v_norm = gl_Color.a; // Using alpha to pass normalization factor\n"
             "    if (u_useRotation != 0) {\n"
-            "        float angle = u_time * u_globalSpeed * u_m;\n"
+            "        float probabilitySpeedFactor = 0.15 + (v_norm * 3.5);\n"
+            "        float angle = u_time * u_globalSpeed * probabilitySpeedFactor * u_m;\n"
             "        float s = sin(angle);\n"
             "        float c = cos(angle);\n"
             "        float x = pos.x * c - pos.z * s;\n"
@@ -233,7 +244,7 @@ void Engine::initShaders() {
             "        pos.z = z;\n"
             "    }\n"
             "    if (u_clipEnabled != 0 && pos.y > 0.0 && pos.z > 0.0) {\n"
-            "        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);\n" // Simple way to discard point in VS
+            "        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);\n"
             "    } else {\n"
             "        gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 1.0);\n"
             "    }\n"
@@ -292,6 +303,13 @@ void Engine::renderUI() {
         ImGui::Text("Performance: %.1f ms", m_frameTimeMs);
         ImGui::Text("Frame Time:  %.2f FPS", m_fps);
         ImGui::Text("Cloud Density: %d / %d Points", static_cast<int>(cloudPoints.size()), maxPoints);
+
+        if (m_isRegenerating) {
+            float progress = static_cast<float>(m_progressPoints) / static_cast<float>(maxPoints);
+            ImGui::Spacing();
+            ImGui::Text("Regenerating...");
+            ImGui::ProgressBar(progress, ImVec2(-1, 0));
+        }
 
         ImGui::Spacing();
         ImGui::Spacing();
@@ -617,6 +635,7 @@ void Engine::drawCloud(float timeVal) {
         for (const auto &p : cloudPoints) {
             float norm = p.brightness * invMaxDensity;
             glm::vec4 color = heatmapFire(norm);
+            color.a = norm; // Store norm in alpha for the shader to use
             vertexBuffer.push_back({p.pos, color});
         }
         m_needsRebuild = false;
@@ -632,8 +651,8 @@ void Engine::drawCloud(float timeVal) {
 
     glUseProgram(m_shaderProgram);
 
-    float pointScale = glm::clamp(380.0f / camera.distance, 0.7f, 5.0f);
-    glPointSize(14.0f * pointScale);
+    float pointScale = glm::clamp(380.0f / camera.distance, 1.0f, 6.0f);
+    glPointSize(18.0f * pointScale);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glEnableClientState(GL_VERTEX_ARRAY);

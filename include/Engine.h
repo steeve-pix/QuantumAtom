@@ -34,6 +34,7 @@ private:
     double m_lastFpsUpdateTime = 0.0;
     int m_frameCount = 0;
 
+    std::atomic<int> m_progressPoints{0};
     int m_pointsGeneratedSoFar = 0;
     std::atomic<bool> m_needsRebuild{false};
     std::atomic<bool> m_isRegenerating{false};
