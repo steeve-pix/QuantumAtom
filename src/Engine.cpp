@@ -12,7 +12,6 @@
 #define PI 3.141592653589793238462643383279502884f
 #endif
 
-// This sets up the Engine when the program starts.
 Engine::Engine(int width, int height, const std::string &title)
     : m_width(width), m_height(height), m_title(title), m_dis(0.0f, 1.0f) {
     std::random_device rd;
@@ -25,19 +24,21 @@ Engine::Engine(int width, int height, const std::string &title)
     regenerateCloud();
 }
 
-// This cleans up and closes everything when the program ends.
 Engine::~Engine() {
-    if (m_shaderProgram) {
-        glDeleteProgram(m_shaderProgram);
-    }
-    if (window) {
-        glfwDestroyWindow(window);
-    }
+    // Stop background thread first — must happen before GL cleanup
+    m_buildCancelled.store(true);
+    if (m_buildThread.joinable())
+        m_buildThread.join();
+
+    if (m_posVbo)   glDeleteBuffers(1, &m_posVbo);
+    if (m_normVbo)  glDeleteBuffers(1, &m_normVbo);
+    if (m_speedVbo) glDeleteBuffers(1, &m_speedVbo);
+    if (m_shaderProgram) glDeleteProgram(m_shaderProgram);
+    if (window) glfwDestroyWindow(window);
     glfwTerminate();
 }
 
-// This function calculates what color a dot should be based on its density.
-// It creates a "fire" look where higher density is brighter/hotter.
+// ─── heatmapFire (kept for any CPU-side use) ────────────────────────────────
 glm::vec4 Engine::heatmapFire(float value) {
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
     float t = std::pow(clamp_v, 0.35f);
@@ -54,110 +55,143 @@ glm::vec4 Engine::heatmapFire(float value) {
     };
 
     float scaled_v = t * (num_stops - 1);
-    int i = static_cast<int>(scaled_v);
+    int i      = static_cast<int>(scaled_v);
     int next_i = std::min(i + 1, num_stops - 1);
     float local_t = scaled_v - static_cast<float>(i);
 
     glm::vec3 color = glm::mix(stops[i], stops[next_i], local_t);
-
     float alpha = std::pow(t, 0.60f) * 0.95f;
-
-    if (t < 0.03f) {
-        alpha *= (t / 0.03f);
-    }
+    if (t < 0.03f) alpha *= (t / 0.03f);
 
     return glm::vec4(color, alpha);
 }
 
-// This is the core logic that creates the cloud of dots.
-// It uses "rejection sampling": it picks a random spot and checks the math
-// to see if an electron is likely to be there. If yes, it adds a dot.
+// ─── regenerateCloud — fires a background thread, never blocks the render loop
 void Engine::regenerateCloud() {
-    cloudPoints.clear();
-    cloudPoints.reserve(maxPoints);
+    // Cancel and join any in-progress build
+    m_buildCancelled.store(true);
+    if (m_buildThread.joinable())
+        m_buildThread.join();
 
-    const float maxR = 6.0f * static_cast<float>(state.n * state.n) * 1.5f;
+    m_buildCancelled.store(false);
+    m_cloudReady.store(false);
+    m_buildProgress.store(0);
 
-    // First, find the highest possible density to use as a baseline.
-    float maxTestDensity = 0.0f;
-    for (int i = 0; i < 1000; ++i) {
-        float testR = m_dis(m_gen) * maxR;
-        float testTh = std::acos(2.0f * m_dis(m_gen) - 1.0f);
-        float testPh = 2.0f * PI * m_dis(m_gen);
+    QuantumState capturedState = state;
+    int          targetPoints  = maxPoints;
 
-        maxTestDensity = std::max(maxTestDensity, QuantumSimulation::computeProbability(testR, testTh, testPh, state));
-    }
-    if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
+    m_buildThread = std::thread([this, capturedState, targetPoints]() {
 
-    // Keep trying random spots until we have enough dots.
-    int maxAttempts = maxPoints * 25;
-    int attempts = 0;
+        std::mt19937 gen(std::random_device{}());
+        std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 
-    while (static_cast<int>(cloudPoints.size()) < maxPoints && attempts < maxAttempts) {
-        attempts++;
-        float u = m_dis(m_gen);
-        float r = maxR * u;
+        const float a0    = 4.0f;
+        const float maxR  = 6.0f * static_cast<float>(capturedState.n * capturedState.n) * 1.5f;
+        const float peakR = static_cast<float>(capturedState.n * capturedState.n) * a0;
 
-        float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
-        float phi = 2.0f * PI * m_dis(m_gen);
-
-        float density = QuantumSimulation::computeProbability(r, theta, phi, state);
-
-        float volumeCorrection = r * r;
-        float adjustedDensity = density * volumeCorrection;
-
-        // If the math says this spot is likely, keep it!
-        if (m_dis(m_gen) * (maxTestDensity * maxR * maxR) < adjustedDensity) {
-            glm::vec3 pos(r * std::sin(theta) * std::cos(phi),
-                          r * std::cos(theta),
-                          r * std::sin(theta) * std::sin(phi));
-
-            float individualSpeed = 0.3f + (m_dis(m_gen) * 2.2f);
-            cloudPoints.push_back({pos, glm::vec3(0.0f), density, individualSpeed});
+        // ── Stratified maxDensity search ──────────────────────────────────
+        float maxTestDensity = 0.0f;
+        for (int i = 0; i < 3000 && !m_buildCancelled.load(); ++i) {
+            float testR = (i < 1500)
+                ? peakR * (0.5f + dis(gen) * 1.5f)
+                : dis(gen) * maxR;
+            float testTh = std::acos(2.0f * dis(gen) - 1.0f);
+            float testPh = 2.0f * PI * dis(gen);
+            maxTestDensity = std::max(maxTestDensity,
+                QuantumSimulation::computeProbability(testR, testTh, testPh, capturedState));
         }
-    }
+        if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
+        maxTestDensity *= 1.15f;
 
-    // If we couldn't find enough spots, fill the rest with empty dots.
-    while (static_cast<int>(cloudPoints.size()) < maxPoints) {
-        cloudPoints.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 1.0f});
-    }
+        // ── Rejection sampling ────────────────────────────────────────────
+        std::vector<CloudPoint> newCloud;
+        newCloud.reserve(targetPoints);
+
+        int maxAttempts = targetPoints * 25;
+        int attempts    = 0;
+
+        while (static_cast<int>(newCloud.size()) < targetPoints
+               && attempts < maxAttempts
+               && !m_buildCancelled.load())
+        {
+            ++attempts;
+            float r     = maxR * dis(gen);
+            float theta = std::acos(2.0f * dis(gen) - 1.0f);
+            float phi   = 2.0f * PI * dis(gen);
+
+            float density          = QuantumSimulation::computeProbability(r, theta, phi, capturedState);
+            float adjustedDensity  = density * r * r;
+
+            if (dis(gen) * (maxTestDensity * maxR * maxR) < adjustedDensity) {
+                glm::vec3 pos(
+                    r * std::sin(theta) * std::cos(phi),
+                    r * std::cos(theta),
+                    r * std::sin(theta) * std::sin(phi)
+                );
+                float spd = 0.3f + (dis(gen) * 2.2f);
+                newCloud.push_back({pos, glm::vec3(0.0f), density, spd});
+
+                // Update progress every 256 points to avoid atomic contention
+                if ((newCloud.size() & 0xFF) == 0)
+                    m_buildProgress.store((int)(newCloud.size() * 100 / targetPoints));
+            }
+        }
+
+        if (m_buildCancelled.load()) return;
+
+        // Pad to exact size
+        while (static_cast<int>(newCloud.size()) < targetPoints)
+            newCloud.push_back({{0,0,0},{0,0,0},0.0f,1.0f});
+
+        // Cache max density
+        float maxD = 1e-6f;
+        for (const auto& p : newCloud)
+            maxD = std::max(maxD, p.brightness);
+
+        {
+            std::lock_guard<std::mutex> lock(m_swapMutex);
+            m_pendingCloud       = std::move(newCloud);
+            m_cachedMaxDensity   = maxD;
+        }
+        m_buildProgress.store(100);
+        m_cloudReady.store(true);
+    });
 }
 
-// Resets everything to the initial Hydrogen state.
 void Engine::resetSimulation() {
     state.n = 1;
     state.l = 0;
     state.m = 0;
     clipEnabled = false;
-    camera.targetYaw = -40.0f;
-    camera.targetPitch = 25.0f;
-    camera.targetDistance = 380.0f;
-    camera.destinationTargetPos = glm::vec3(0.0f);
+    camera.targetYaw              = -40.0f;
+    camera.targetPitch            = 25.0f;
+    camera.targetDistance         = 380.0f;
+    camera.destinationTargetPos   = glm::vec3(0.0f);
     electronAngle = 0.0f;
     regenerateCloud();
-    std::cout << "[System] Simulation environment successfully reset." << std::endl;
+    std::cout << "[System] Simulation environment successfully reset.\n";
 }
 
-// Re-creates just one dot in the cloud.
 void Engine::regenerateSinglePoint(CloudPoint &p) {
     const float maxR = 12.0f * static_cast<float>(state.n * state.n);
-    float r = m_dis(m_gen) * maxR * 0.98f;
+    float r     = m_dis(m_gen) * maxR * 0.98f;
     float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
-    float phi = 2.0f * PI * m_dis(m_gen);
-    p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi), r * std::sin(theta) * std::sin(phi), r * std::cos(theta));
-    p.vel = glm::vec3(0.0f);
+    float phi   = 2.0f * PI * m_dis(m_gen);
+    p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi),
+                      r * std::sin(theta) * std::sin(phi),
+                      r * std::cos(theta));
+    p.vel        = glm::vec3(0.0f);
     p.brightness = QuantumSimulation::computeProbability(r, theta, phi, state);
 }
 
-// Updates movement over time, like the rotating electron tracker.
 void Engine::updatePhysics(float deltaTime) {
     float orbitSpeed = 4.5f / static_cast<float>(state.n * state.n);
     electronAngle += orbitSpeed * deltaTime;
-
-    if (electronAngle > 2.0f * PI) electronAngle = std::fmod(electronAngle, 2.0f * PI);
+    if (electronAngle > 2.0f * PI)
+        electronAngle = std::fmod(electronAngle, 2.0f * PI);
 }
 
-// Helper function to compile the code that runs on the graphics card.
+// ─── Shader compilation helper ───────────────────────────────────────────────
 GLuint Engine::compileShader(GLenum type, const std::string &source) {
     GLuint shader = glCreateShader(type);
     const char *src = source.c_str();
@@ -169,40 +203,134 @@ GLuint Engine::compileShader(GLenum type, const std::string &source) {
     if (!success) {
         char infoLog[512];
         glGetShaderInfoLog(shader, 512, nullptr, infoLog);
-        std::cerr << "[Shader Error] Compilation failed:\n" << infoLog << std::endl;
+        std::cerr << "[Shader Error] " << infoLog << "\n";
     }
     return shader;
 }
 
-// Sets up the shaders to make the dots look like soft, glowing spheres.
+// ─── initShaders — rotation + heatmap colour baked into the vertex shader ───
+//     Zero CPU work per frame: sin/cos runs on the GPU, colour is computed
+//     in the vertex shader from the uploaded norm value.
 void Engine::initShaders() {
-    std::string vertexSource =
-            "#version 120\n"
-            "void main() {\n"
-            "    gl_FrontColor = gl_Color;\n"
-            "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
-            "}\n";
+    // All per-point rotation and colour logic lives here now.
+    // The CPU uploads static VBOs once; uniforms carry time + state.
+    const std::string vertSrc = R"GLSL(
+#version 120
+attribute vec3  aPos;
+attribute float aNorm;
+attribute float aSpeed;
 
-    std::string fragmentSource =
-            "#version 120\n"
-            "void main() {\n"
-            "    vec2 circCoord = gl_PointCoord - vec2(0.5);\n"
-            "    float distSq = dot(circCoord, circCoord);\n"
-            "    if (distSq > 0.25) discard;\n"
-            "    \n"
-            "    float alphaIntensity = smoothstep(0.25, 0.0, distSq);\n"
-            "    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * alphaIntensity);\n"
-            "}\n";
+uniform float uTime;
+uniform float uGlobalSpeed;
+uniform float uMFloat;
+uniform int   uUseRotation;
+uniform float uPointScale;
+uniform int   uClipEnabled;
 
-    GLuint vs = compileShader(GL_VERTEX_SHADER, vertexSource);
-    GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
+varying float vNorm;
+varying float vDiscard;
+
+void main() {
+    vec3 pos = aPos;
+
+    if (uUseRotation == 1) {
+        float angle = uTime * uGlobalSpeed * (0.15 + aNorm * 3.5) * uMFloat;
+        float s = sin(angle);
+        float c = cos(angle);
+        float newX = pos.x * c - pos.z * s;
+        float newZ = pos.x * s + pos.z * c;
+        pos.x = newX;
+        pos.z = newZ;
+    }
+
+    // Clip top-front quadrant — mirrors original: clipEnabled && pos.y>0 && pos.z>0
+    vDiscard = (uClipEnabled == 1 && pos.y > 0.0 && pos.z > 0.0) ? 1.0 : 0.0;
+    vNorm    = aNorm;
+
+    // Heatmap colour — mirrors heatmapFire() exactly
+    float t  = pow(aNorm, 0.35);
+    float s6 = t * 6.0;
+    int   ci = int(s6);
+    float lt = s6 - float(ci);
+
+    vec3 c0 = vec3(0.280, 0.000, 0.550);
+    vec3 c1 = vec3(0.450, 0.000, 0.650);
+    vec3 c2 = vec3(0.800, 0.000, 0.550);
+    vec3 c3 = vec3(0.950, 0.050, 0.050);
+    vec3 c4 = vec3(1.000, 0.500, 0.000);
+    vec3 c5 = vec3(1.000, 0.900, 0.000);
+    vec3 c6 = vec3(1.000, 1.000, 0.850);
+
+    vec3 col;
+    if      (ci == 0) col = mix(c0, c1, lt);
+    else if (ci == 1) col = mix(c1, c2, lt);
+    else if (ci == 2) col = mix(c2, c3, lt);
+    else if (ci == 3) col = mix(c3, c4, lt);
+    else if (ci == 4) col = mix(c4, c5, lt);
+    else              col = mix(c5, c6, lt);
+
+    float alpha = pow(t, 0.60) * 0.95;
+    if (t < 0.03) alpha *= (t / 0.03);
+
+    gl_FrontColor = vec4(col, alpha);
+    gl_PointSize  = 14.0 * uPointScale;
+    gl_Position   = gl_ModelViewProjectionMatrix * vec4(pos, 1.0);
+}
+)GLSL";
+
+    const std::string fragSrc = R"GLSL(
+#version 120
+varying float vNorm;
+varying float vDiscard;
+
+void main() {
+    // Clipped region (top-front quadrant when clip enabled)
+    if (vDiscard > 0.5) discard;
+
+    // Skip dead padding points
+    if (vNorm < 0.0001) discard;
+
+    vec2  cc     = gl_PointCoord - vec2(0.5);
+    float distSq = dot(cc, cc);
+    if (distSq > 0.25) discard;
+
+    float a = smoothstep(0.25, 0.0, distSq);
+    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * a);
+}
+)GLSL";
+
+    GLuint vs = compileShader(GL_VERTEX_SHADER,   vertSrc);
+    GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragSrc);
+
     m_shaderProgram = glCreateProgram();
     glAttachShader(m_shaderProgram, vs);
     glAttachShader(m_shaderProgram, fs);
     glLinkProgram(m_shaderProgram);
+
+    GLint ok;
+    glGetProgramiv(m_shaderProgram, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[512];
+        glGetProgramInfoLog(m_shaderProgram, 512, nullptr, log);
+        std::cerr << "[Shader Link Error] " << log << "\n";
+    }
+
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    // Cache locations — avoids string lookup every frame
+    m_attrPos      = glGetAttribLocation (m_shaderProgram, "aPos");
+    m_attrNorm     = glGetAttribLocation (m_shaderProgram, "aNorm");
+    m_attrSpeed    = glGetAttribLocation (m_shaderProgram, "aSpeed");
+    m_uTime        = glGetUniformLocation(m_shaderProgram, "uTime");
+    m_uGlobalSpeed = glGetUniformLocation(m_shaderProgram, "uGlobalSpeed");
+    m_uMFloat      = glGetUniformLocation(m_shaderProgram, "uMFloat");
+    m_uUseRotation = glGetUniformLocation(m_shaderProgram, "uUseRotation");
+    m_uPointScale  = glGetUniformLocation(m_shaderProgram, "uPointScale");
+    m_uClipEnabled = glGetUniformLocation(m_shaderProgram, "uClipEnabled");
 }
 
-// Draws the menus and information on the screen using ImGui.
+// ─── renderUI ────────────────────────────────────────────────────────────────
 void Engine::renderUI() {
     ImGui_ImplOpenGL2_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -213,38 +341,44 @@ void Engine::renderUI() {
     double currentTime = glfwGetTime();
     m_frameCount++;
     if (currentTime - m_lastFpsUpdateTime >= 0.5) {
-        m_fps = static_cast<float>(m_frameCount) / static_cast<float>(currentTime - m_lastFpsUpdateTime);
+        m_fps         = static_cast<float>(m_frameCount) /
+                        static_cast<float>(currentTime - m_lastFpsUpdateTime);
         m_frameTimeMs = 1000.0f / m_fps;
-        m_frameCount = 0;
+        m_frameCount  = 0;
         m_lastFpsUpdateTime = currentTime;
     }
 
-    float hudMargin = 15.0f;
-    ImVec2 hudPos = ImVec2(io.DisplaySize.x - hudMargin, hudMargin);
-    ImVec2 hudPivot = ImVec2(1.0f, 0.0f);
-    ImGui::SetNextWindowPos(hudPos, ImGuiCond_Always, hudPivot);
+    // ── Performance HUD (top-right) ──────────────────────────────────────
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 15.0f, 15.0f),
+                            ImGuiCond_Always, ImVec2(1.0f, 0.0f));
     ImGui::SetNextWindowBgAlpha(0.55f);
-
-    ImGuiWindowFlags hudFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-                                ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+    ImGuiWindowFlags hudFlags = ImGuiWindowFlags_NoDecoration |
+                                ImGuiWindowFlags_AlwaysAutoResize |
+                                ImGuiWindowFlags_NoSavedSettings |
+                                ImGuiWindowFlags_NoFocusOnAppearing |
                                 ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
-
-    if (ImGui::Begin("Performance & Math HUD", nullptr, hudFlags)) {
+    if (ImGui::Begin("HUD", nullptr, hudFlags)) {
         ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.8f, 1.0f), "SYSTEM METRICS");
         ImGui::Separator();
-        ImGui::Text("Performance: %.1f ms", m_frameTimeMs);
-        ImGui::Text("Frame Time:  %.2f FPS", m_fps);
-        ImGui::Text("Cloud Density: %d / %d Points", static_cast<int>(cloudPoints.size()), maxPoints);
-
-        ImGui::Spacing();
-        ImGui::Spacing();
+        ImGui::Text("Performance:   %.1f ms", m_frameTimeMs);
+        ImGui::Text("FPS:     %.2f", m_fps);
+        ImGui::Text("Points:  %d / %d", (int)cloudPoints.size(), maxPoints);
+        bool building = m_buildThread.joinable() && !m_cloudReady.load();
+        if (building) {
+            int pct = m_buildProgress.load();
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Building cloud...");
+            char buf[16]; snprintf(buf, sizeof(buf), "%d%%", pct);
+            ImGui::ProgressBar(pct / 100.0f, ImVec2(-1.0f, 0.0f), buf);
+        }
     }
     ImGui::End();
 
-
+    // ── Control panel (left) ─────────────────────────────────────────────
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(420, 680), ImGuiCond_Once);
-    ImGui::Begin("Quantum Configuration & Information", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+    ImGui::Begin("Quantum Configuration & Information", nullptr,
+                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
     ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.8f, 1.0f), "QUANTUM NUMBERS CONTROL");
     ImGui::Separator();
@@ -267,93 +401,73 @@ void Engine::renderUI() {
     ImGui::TextDisabled("Defines the subshell shape layout geometry (s, p, d, f).");
 
     ImGui::SliderInt("Magnetic (m)", &state.m, -state.l, state.l);
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
-        stateChanged = true;
-    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) stateChanged = true;
     ImGui::TextDisabled("Defines spatial orientation axes constraints.");
 
     ImGui::Spacing();
     ImGui::Checkbox("Enable Cross-Section Clip", &clipEnabled);
+    // Clip toggle only needs a VBO re-upload, not a full rebuild
+    // (handled via m_vboDirty — clipping is now done in fragment shader)
+
     if (stateChanged) regenerateCloud();
 
-    ImGui::Spacing();
-    ImGui::Spacing();
+    ImGui::Spacing(); ImGui::Spacing();
 
     ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.0f, 1.0f), "WHAT ARE YOU LOOKING AT?");
     ImGui::Separator();
 
-    ImGui::BeginChild("TheoryScroll", ImVec2(0, 0), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
-
+    ImGui::BeginChild("TheoryScroll", ImVec2(0, 0), true,
+                      ImGuiWindowFlags_AlwaysVerticalScrollbar);
     ImGui::SeparatorText("The Quantum Probability Cloud");
     ImGui::TextWrapped(
         "This particle cloud is a 3D solution to the time-independent Schrodinger Equation "
-        "for a Hydrogen-like atom."
-    );
+        "for a Hydrogen-like atom.");
     ImGui::Spacing();
-
     ImGui::BulletText("Wave Function (Psi):");
     ImGui::TextWrapped(
         "Electrons do not travel in planetary rings. They exist as a standing wave of probability. "
         "The denser the cloud points are in a region, the higher the mathematical likelihood "
-        "of finding the electron there upon measurement."
-    );
+        "of finding the electron there upon measurement.");
     ImGui::Spacing();
-
     ImGui::BulletText("Hydrogen-Like Analytical Solution:");
     ImGui::TextWrapped(
         "By simulating a single-electron system, we omit chaotic electron-electron repulsions. "
         "This isolates pure electrostatic attraction, rendering an exact mathematical representation "
-        "of atomic geometry."
-    );
-
+        "of atomic geometry.");
     ImGui::Spacing();
-
     ImGui::SeparatorText("The Classical Simulation Tracker");
     ImGui::TextWrapped(
         "The bright traveling sphere represents a localized simulation snapshot tracker showing "
-        "the dynamic orbital path tracking across calculated classical kinetic constraints."
-    );
+        "the dynamic orbital path tracking across calculated classical kinetic constraints.");
     ImGui::Spacing();
-
     ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f), "Bridging Two Frameworks:");
     ImGui::TextWrapped(
         "Because the Heisenberg Uncertainty Principle forbids an exact path for quantum waves, "
         "this sphere is an analytical overlay. It maps classical momentum, velocity gradients, "
         "and potential energy fields as a localized point riding through the probability cloud, "
-        "making the abstract math intuitive to human sight."
-    );
-
+        "making the abstract math intuitive to human sight.");
     ImGui::EndChild();
     ImGui::End();
 
-    float margin = 15.0f;
-    ImVec2 window_pos = ImVec2(static_cast<float>(m_width) - margin, static_cast<float>(m_height) - margin);
-    ImVec2 window_pos_pivot = ImVec2(1.0f, 1.0f);
-    ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
+    // ── Credits (bottom-right) ───────────────────────────────────────────
+    ImGui::SetNextWindowPos(
+        ImVec2(static_cast<float>(m_width) - 15.0f,
+               static_cast<float>(m_height) - 15.0f),
+        ImGuiCond_Always, ImVec2(1.0f, 1.0f));
     ImGui::SetNextWindowBgAlpha(0.35f);
-
-    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration |
-                                    ImGuiWindowFlags_AlwaysAutoResize |
-                                    ImGuiWindowFlags_NoSavedSettings |
-                                    ImGuiWindowFlags_NoFocusOnAppearing |
-                                    ImGuiWindowFlags_NoNav |
-                                    ImGuiWindowFlags_NoMove;
-
-    if (ImGui::Begin("Credits Overlay", nullptr, window_flags)) {
+    ImGuiWindowFlags credFlags = ImGuiWindowFlags_NoDecoration |
+                                 ImGuiWindowFlags_AlwaysAutoResize |
+                                 ImGuiWindowFlags_NoSavedSettings |
+                                 ImGuiWindowFlags_NoFocusOnAppearing |
+                                 ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+    if (ImGui::Begin("Credits", nullptr, credFlags)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.8f, 1.0f, 1.0f));
         ImGui::Text("Credits to");
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.7f, 1.0f), "kavan010");
         ImGui::PopStyleColor();
-
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Visit kavan010's GitHub Profile");
-        }
-
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-        ImGui::Text("GitHub:");
-        ImGui::SameLine();
-        ImGui::TextUnformatted("https://github.com/kavan010/");
+        ImGui::Text("GitHub: https://github.com/kavan010/");
         ImGui::PopStyleColor();
     }
     ImGui::End();
@@ -362,8 +476,21 @@ void Engine::renderUI() {
     ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 }
 
-// This is the main drawing routine. It clears the screen and calls all the other draw functions.
+// ─── drawScene ───────────────────────────────────────────────────────────────
 void Engine::drawScene(float currentFrameTime, float deltaTime) {
+    // ── Non-blocking cloud swap ───────────────────────────────────────────
+    // Background thread signals when done; we swap on the render thread
+    // so no GL calls happen off-thread.
+    if (m_cloudReady.load()) {
+        {
+            std::lock_guard<std::mutex> lock(m_swapMutex);
+            cloudPoints        = std::move(m_pendingCloud);
+            m_cachedMaxDensity = m_cachedMaxDensity; // already set by thread
+        }
+        m_cloudReady.store(false);
+        m_vboDirty = true;  // trigger VBO re-upload this frame
+    }
+
     glClearColor(0.05f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -375,13 +502,10 @@ void Engine::drawScene(float currentFrameTime, float deltaTime) {
     drawCloud(currentFrameTime);
     glPopMatrix();
 
-    glPushMatrix();
-    glPopMatrix();
-
     renderUI();
 }
 
-// Sets up the GLFW window context.
+// ─── initGlfwWindow ──────────────────────────────────────────────────────────
 void Engine::initGlfwWindow() {
     if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW.");
 
@@ -399,52 +523,49 @@ void Engine::initGlfwWindow() {
     glfwSetWindowUserPointer(window, this);
 }
 
-// Loads OpenGL functions and sets up basic drawing rules.
+// ─── initOpenGL ──────────────────────────────────────────────────────────────
 void Engine::initOpenGL() {
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
         throw std::runtime_error("Failed to initialize GLAD.");
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
-
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-    glEnable(0x8861);
+    glEnable(0x8861); // GL_POINT_SPRITE
 
     initShaders();
 }
 
-// Sets up the ImGui menu system.
+// ─── initImGui ───────────────────────────────────────────────────────────────
 void Engine::initImGui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    (void) io;
+    ImGuiIO &io = ImGui::GetIO(); (void)io;
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, false);
     ImGui_ImplOpenGL2_Init();
 }
 
-// Connects keyboard and mouse inputs to the program's functions.
+// ─── setupCallbacks ──────────────────────────────────────────────────────────
 void Engine::setupCallbacks() {
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow *win, int w, int h) {
-        auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
-        eng->m_width = w;
+        auto *eng = static_cast<Engine*>(glfwGetWindowUserPointer(win));
+        eng->m_width  = w;
         eng->m_height = h;
         glViewport(0, 0, w, h);
     });
 
     glfwSetKeyCallback(window, [](GLFWwindow *win, int key, int scancode, int action, int mods) {
         ImGui_ImplGlfw_KeyCallback(win, key, scancode, action, mods);
-        auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
+        auto *eng = static_cast<Engine*>(glfwGetWindowUserPointer(win));
 
-        if (!ImGui::GetIO().WantCaptureKeyboard && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+        if (!ImGui::GetIO().WantCaptureKeyboard &&
+            (action == GLFW_PRESS || action == GLFW_REPEAT)) {
             bool changed = false;
 
             if (key == GLFW_KEY_R && action == GLFW_PRESS) {
-                eng->resetSimulation();
-                return;
+                eng->resetSimulation(); return;
             }
-
             if (key == GLFW_KEY_UP) {
                 eng->state.n = std::min(eng->state.n + 1, 6);
                 changed = true;
@@ -455,160 +576,183 @@ void Engine::setupCallbacks() {
                 eng->state.m = glm::clamp(eng->state.m, -eng->state.l, eng->state.l);
                 changed = true;
             }
-            if (key == GLFW_KEY_C && action == GLFW_PRESS) {
+            if (key == GLFW_KEY_C && action == GLFW_PRESS)
                 eng->clipEnabled = !eng->clipEnabled;
-            }
+
             if (changed) eng->regenerateCloud();
         }
     });
 
     glfwSetMouseButtonCallback(window, [](GLFWwindow *win, int button, int action, int mods) {
         ImGui_ImplGlfw_MouseButtonCallback(win, button, action, mods);
-        auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
+        auto *eng = static_cast<Engine*>(glfwGetWindowUserPointer(win));
         if (!ImGui::GetIO().WantCaptureMouse) {
-            if (action == GLFW_PRESS) eng->m_mouseButtonDown = button;
+            if (action == GLFW_PRESS)   eng->m_mouseButtonDown = button;
             else if (action == GLFW_RELEASE) eng->m_mouseButtonDown = -1;
         } else eng->m_mouseButtonDown = -1;
     });
 
     glfwSetCursorPosCallback(window, [](GLFWwindow *win, double xpos, double ypos) {
         ImGui_ImplGlfw_CursorPosCallback(win, xpos, ypos);
-        auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
+        auto *eng = static_cast<Engine*>(glfwGetWindowUserPointer(win));
         if (eng->m_firstMouse) {
             eng->m_lastMouseX = static_cast<float>(xpos);
             eng->m_lastMouseY = static_cast<float>(ypos);
             eng->m_firstMouse = false;
             return;
         }
-        float xoffset = static_cast<float>(xpos) - eng->m_lastMouseX;
-        float yoffset = eng->m_lastMouseY - static_cast<float>(ypos);
+        float dx = static_cast<float>(xpos) - eng->m_lastMouseX;
+        float dy = eng->m_lastMouseY - static_cast<float>(ypos);
         eng->m_lastMouseX = static_cast<float>(xpos);
         eng->m_lastMouseY = static_cast<float>(ypos);
 
         if (eng->m_mouseButtonDown != -1 && !ImGui::GetIO().WantCaptureMouse) {
-            bool shiftPressed = (glfwGetKey(win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-                                 glfwGetKey(win, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
-
-            if (shiftPressed || eng->m_mouseButtonDown == GLFW_MOUSE_BUTTON_RIGHT) eng->camera.pan(xoffset, yoffset);
+            bool shift = (glfwGetKey(win, GLFW_KEY_LEFT_SHIFT)  == GLFW_PRESS ||
+                          glfwGetKey(win, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+            if (shift || eng->m_mouseButtonDown == GLFW_MOUSE_BUTTON_RIGHT)
+                eng->camera.pan(dx, dy);
             else if (eng->m_mouseButtonDown == GLFW_MOUSE_BUTTON_LEFT) {
-                eng->camera.targetYaw += xoffset * 0.18f;
-                eng->camera.targetPitch += yoffset * 0.18f;
-                eng->camera.targetPitch = glm::clamp(eng->camera.targetPitch, -89.0f, 89.0f);
+                eng->camera.targetYaw   += dx * 0.18f;
+                eng->camera.targetPitch += dy * 0.18f;
+                eng->camera.targetPitch  = glm::clamp(eng->camera.targetPitch, -89.0f, 89.0f);
             }
         }
     });
 
-    glfwSetScrollCallback(window, [](GLFWwindow *win, double xoffset, double yoffset) {
-        ImGui_ImplGlfw_ScrollCallback(win, xoffset, yoffset);
+    glfwSetScrollCallback(window, [](GLFWwindow *win, double xoff, double yoff) {
+        ImGui_ImplGlfw_ScrollCallback(win, xoff, yoff);
         if (!ImGui::GetIO().WantCaptureMouse) {
-            auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
-            eng->camera.targetDistance -= static_cast<float>(yoffset) * 22.0f;
-            eng->camera.targetDistance = glm::clamp(eng->camera.targetDistance, 60.0f, 1400.0f);
+            auto *eng = static_cast<Engine*>(glfwGetWindowUserPointer(win));
+            eng->camera.targetDistance -= static_cast<float>(yoff) * 22.0f;
+            eng->camera.targetDistance  = glm::clamp(eng->camera.targetDistance, 60.0f, 1400.0f);
         }
     });
 
-    glfwSetCharCallback(window, [](GLFWwindow *win, unsigned int codepoint) {
-        ImGui_ImplGlfw_CharCallback(win, codepoint);
+    glfwSetCharCallback(window, [](GLFWwindow *win, unsigned int cp) {
+        ImGui_ImplGlfw_CharCallback(win, cp);
     });
 }
 
-// Draws the X, Y, and Z axes to help you see directions in 3D.
+// ─── drawAxes ────────────────────────────────────────────────────────────────
 void Engine::drawAxes() {
     glPushMatrix();
     glLineWidth(2.0f);
     glBegin(GL_LINES);
-    glColor3f(1.0f, 0.0f, 0.0f);
-    glVertex3f(0.0f, 0.0f, 0.0f);
-    glVertex3f(120.0f, 0.0f, 0.0f);
-
-    glColor3f(0.0f, 1.0f, 0.0f);
-    glVertex3f(0.0f, 0.0f, 0.0f);
-    glVertex3f(0.0f, 120.0f, 0.0f);
-
-    glColor3f(0.0f, 0.0f, 1.0f);
-    glVertex3f(0.0f, 0.0f, 0.0f);
-    glVertex3f(0.0f, 0.0f, 120.0f);
+    glColor3f(1,0,0); glVertex3f(0,0,0); glVertex3f(120,0,0);
+    glColor3f(0,1,0); glVertex3f(0,0,0); glVertex3f(0,120,0);
+    glColor3f(0,0,1); glVertex3f(0,0,0); glVertex3f(0,0,120);
     glEnd();
     glPopMatrix();
 }
 
-// This function draws all the dots that make up the electron cloud.
+// ─── drawCloud — THE HOT PATH ────────────────────────────────────────────────
+// All rotation + colour work is in the vertex shader.
+// CPU contribution this function: set 6 uniforms + 1 draw call.
+// VBO upload only happens once per cloud rebuild (m_vboDirty flag).
 void Engine::drawCloud(float timeVal) {
     if (cloudPoints.empty()) return;
 
+    // ── One-time VBO upload ───────────────────────────────────────────────
+    if (m_vboDirty) {
+        const size_t n = cloudPoints.size();
+
+        // Find maxDensity (once, not every frame)
+        float maxD = 1e-6f;
+        for (const auto& p : cloudPoints) maxD = std::max(maxD, p.brightness);
+        float invMax = 1.0f / maxD;
+
+        // Build flat arrays
+        std::vector<float> positions(n * 3);
+        std::vector<float> norms(n);
+        std::vector<float> speeds(n);
+
+        for (size_t i = 0; i < n; ++i) {
+            const auto& p     = cloudPoints[i];
+            positions[i*3+0]  = p.pos.x;
+            positions[i*3+1]  = p.pos.y;
+            positions[i*3+2]  = p.pos.z;
+            norms[i]           = p.brightness * invMax;
+            speeds[i]          = p.speedFactor;
+        }
+
+        if (!m_posVbo)   glGenBuffers(1, &m_posVbo);
+        if (!m_normVbo)  glGenBuffers(1, &m_normVbo);
+        if (!m_speedVbo) glGenBuffers(1, &m_speedVbo);
+
+        glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
+        glBufferData(GL_ARRAY_BUFFER,
+                     (GLsizeiptr)(positions.size() * sizeof(float)),
+                     positions.data(), GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ARRAY_BUFFER, m_normVbo);
+        glBufferData(GL_ARRAY_BUFFER,
+                     (GLsizeiptr)(norms.size() * sizeof(float)),
+                     norms.data(), GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ARRAY_BUFFER, m_speedVbo);
+        glBufferData(GL_ARRAY_BUFFER,
+                     (GLsizeiptr)(speeds.size() * sizeof(float)),
+                     speeds.data(), GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        m_vboDirty = false;
+    }
+
+    // ── Draw — 1 draw call, uniforms only ────────────────────────────────
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
+    glDepthMask(GL_TRUE);  // transparent points skip depth write
+    glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 
     glUseProgram(m_shaderProgram);
 
     float pointScale = glm::clamp(380.0f / camera.distance, 0.7f, 5.0f);
-    glPointSize(14.0f * pointScale);
 
-    float maxDensity = 1e-6f;
-    const size_t numPoints = cloudPoints.size();
+    glUniform1f(m_uTime,        timeVal);
+    glUniform1f(m_uGlobalSpeed, 5.0f / static_cast<float>(state.n));
+    glUniform1f(m_uMFloat,      static_cast<float>(state.m));
+    glUniform1i(m_uUseRotation, (state.m != 0) ? 1 : 0);
+    glUniform1f(m_uPointScale,  pointScale);
+    glUniform1i(m_uClipEnabled, clipEnabled ? 1 : 0);
 
-    for (size_t i = 0; i < numPoints; ++i) {
-        if (cloudPoints[i].brightness > maxDensity) {
-            maxDensity = cloudPoints[i].brightness;
-        }
-    }
+    // Bind VBO attribute arrays
+    glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
+    glEnableVertexAttribArray(m_attrPos);
+    glVertexAttribPointer(m_attrPos, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-    float invMaxDensity = 1.0f / maxDensity;
-    float globalSpeed = 5.0f / static_cast<float>(state.n);
-    bool useRotation = (state.m != 0);
-    float m_float = static_cast<float>(state.m);
+    glBindBuffer(GL_ARRAY_BUFFER, m_normVbo);
+    glEnableVertexAttribArray(m_attrNorm);
+    glVertexAttribPointer(m_attrNorm, 1, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-    glBegin(GL_POINTS);
-    for (size_t i = 0; i < numPoints; ++i) {
-        const auto &p = cloudPoints[i];
-        glm::vec3 pos = p.pos;
+    glBindBuffer(GL_ARRAY_BUFFER, m_speedVbo);
+    glEnableVertexAttribArray(m_attrSpeed);
+    glVertexAttribPointer(m_attrSpeed, 1, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-        float norm = p.brightness * invMaxDensity;
+    glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(cloudPoints.size()));
 
-        // If the atom state has a rotation (m != 0), spin the dots around the center.
-        if (useRotation) {
-            float probabilitySpeedFactor = 0.15f + (norm * 3.5f);
-            float angle = timeVal * globalSpeed * probabilitySpeedFactor * m_float;
-
-            float sinA = std::sin(angle);
-            float cosA = std::cos(angle);
-
-            float origX = pos.x;
-            float origZ = pos.z;
-            pos.x = origX * cosA - origZ * sinA;
-            pos.z = origX * sinA + origZ * cosA;
-        }
-
-        // If clipping is enabled, don't draw dots in the top-front quadrant.
-        if (clipEnabled && pos.y > 0.0f && pos.z > 0.0f) {
-            continue;
-        }
-
-        glm::vec4 fireColor = heatmapFire(norm);
-        glColor4f(fireColor.r, fireColor.g, fireColor.b, fireColor.a);
-        glVertex3f(pos.x, pos.y, pos.z);
-    }
-    glEnd();
+    glDisableVertexAttribArray(m_attrPos);
+    glDisableVertexAttribArray(m_attrNorm);
+    glDisableVertexAttribArray(m_attrSpeed);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glUseProgram(0);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
 }
 
-// Draws a single white dot that follows a circular path.
+// ─── drawActiveElectron ──────────────────────────────────────────────────────
 void Engine::drawActiveElectron() {
     float radius = 14.5f * static_cast<float>(state.n * state.n);
     float x = radius * std::cos(electronAngle);
     float y = (state.l > 0) ? radius * std::sin(electronAngle) * 0.5f : 0.0f;
     float z = (state.l > 0)
-                  ? radius * std::sin(electronAngle) * std::sqrt(1.0f - 0.5f * 0.5f)
-                  : radius * std::sin(electronAngle);
+        ? radius * std::sin(electronAngle) * std::sqrt(1.0f - 0.5f * 0.5f)
+        : radius * std::sin(electronAngle);
 
     glPointSize(12.0f);
     glBegin(GL_POINTS);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glColor4f(1, 1, 1, 1);
     glVertex3f(x, y, z);
     glEnd();
 }
