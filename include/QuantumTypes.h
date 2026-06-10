@@ -3,21 +3,25 @@
 
 #include <glm/glm.hpp>
 
-// This structure represents a single dot in the 3D cloud.
-// It keeps track of where the dot is (pos) and how bright it should look.
+/*
+ * CloudPoint represents a single vertex in our orbital visualization.
+ * It stores physical properties that determine its behavior and appearance.
+ */
 struct CloudPoint {
-    glm::vec3 pos;
-    glm::vec3 vel;
-    float brightness;
-    float speedFactor;
+    glm::vec3 pos;           // Position in 3D space
+    glm::vec3 vel;           // Velocity (used for legacy or future physics)
+    float brightness;        // Probability density at this point
+    float speedFactor;       // Individual rotation speed variation
 };
 
-// This structure holds the "settings" for the atom's state.
-// In physics, these numbers (n, l, m) decide the shape of the electron's home.
+/*
+ * QuantumState defines the specific electronic configuration of the atom.
+ * These correspond to the principal (n), azimuthal (l), and magnetic (m) quantum numbers.
+ */
 struct QuantumState {
-    int n = 1; // Size/Energy level
-    int l = 0; // Shape (0 is a sphere, higher numbers get more complex)
-    int m = 0; // Direction (which way the shape is pointing)
+    int n = 1; // Principal quantum number (energy level)
+    int l = 0; // Azimuthal quantum number (orbital shape)
+    int m = 0; // Magnetic quantum number (orientation)
 };
 
 #endif

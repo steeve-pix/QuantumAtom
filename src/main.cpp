@@ -2,35 +2,43 @@
 #include <iostream>
 #include <chrono>
 
-// This is the starting point of the whole program.
 int main() {
     try {
-        // Create the engine which opens the window and sets up the 3D world.
+        /* 
+         * First, we initialize the Engine. 
+         * This sets up our window, the graphics context, and our simulation state.
+         */
         Engine engine(1280, 720, "QuantumAtom - Hydrogen-like Orbital Visualizer");
 
         auto lastTime = std::chrono::high_resolution_clock::now();
 
-        // Keep the program running until the user closes the window.
+        /*
+         * This is the "Game Loop". 
+         * It runs continuously, updating and rendering until the user decides to quit.
+         */
         while (!glfwWindowShouldClose(engine.window)) {
-            // Measure how much time has passed since the last frame.
+            // We calculate 'deltaTime' to ensure smooth movement regardless of frame rate.
             auto currentTime = std::chrono::high_resolution_clock::now();
             float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
             lastTime = currentTime;
 
-            // Check if the user pressed any keys or moved the mouse.
+            // Handle user inputs (mouse, keyboard).
             glfwPollEvents();
 
-            // Move things in the simulation (like the rotating electron).
+            // Update the internal physics of our world.
             engine.updatePhysics(deltaTime);
 
-            // Tell the graphics card to draw the current scene.
+            // Draw the atom cloud and the user interface.
             engine.drawScene(static_cast<float>(glfwGetTime()), deltaTime);
 
-            // Show the frame we just drew on the screen.
+            // Swap the back buffer to the front so we see the new frame.
             glfwSwapBuffers(engine.window);
         }
     } catch (const std::exception &e) {
-        // If something goes wrong, print the error message.
+        /*
+         * If the program crashes or fails to start, 
+         * we catch the error here and let the user know what happened.
+         */
         std::cerr << "Fatal error: " << e.what() << std::endl;
         return EXIT_FAILURE;
     }

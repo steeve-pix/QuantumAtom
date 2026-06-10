@@ -6,8 +6,10 @@
 #define PI 3.14159265358979323846f
 #endif
 
-// This function is for Legendre Polynomials.
-// In quantum mechanics, these help decide the "angular" shape of the atom.
+/*
+ * Implementation of the Associated Legendre Polynomials.
+ * In quantum mechanics, these describe the angular variation of the wavefunction.
+ */
 float QuantumSimulation::associatedLegendre(int l, int m, float x) {
     int absM = std::abs(m);
     if (absM > l) return 0.0f;
@@ -37,15 +39,17 @@ float QuantumSimulation::associatedLegendre(int l, int m, float x) {
     return pmmp1;
 }
 
-// This function is for Laguerre Polynomials.
-// These help decide the "radial" part (how far the electron is from the center).
+/*
+ * Implementation of the Associated Laguerre Polynomials.
+ * These describe the radial component of the electron's probability distribution.
+ */
 float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
     float f_alpha = static_cast<float>(alpha);
     if (k == 0) return 1.0f;
-    if (k == 1) return 1.0f + alpha - x;
+    if (k == 1) return 1.0f + f_alpha - x;
 
     float L0 = 1.0f;
-    float L1 = 1.0f + alpha - x;
+    float L1 = 1.0f + f_alpha - x;
     float L2 = 0.0f;
 
     for (int j = 2; j <= k; j++) {
@@ -57,11 +61,15 @@ float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
     return L2;
 }
 
-// This combines angles and directions to create the final 3D shape.
+/*
+ * Spherical Harmonics: Defines the complex spatial shapes of the orbitals.
+ * Combines the angular terms into a single probability value.
+ */
 float QuantumSimulation::sphericalHarmonic(int l, int m, float theta, float phi) {
     int absM = std::abs(m);
     float Plm = associatedLegendre(l, absM, std::cos(theta));
 
+    // Normalization factor using Gamma functions for precision at higher quantum numbers.
     float logNumFact = std::lgammaf(static_cast<float>(l - absM + 1));
     float logDenFact = std::lgammaf(static_cast<float>(l + absM + 1));
 
@@ -77,15 +85,19 @@ float QuantumSimulation::sphericalHarmonic(int l, int m, float theta, float phi)
     return norm * Plm;
 }
 
-// This is the main formula that tells us: "If I look here, what are the odds an electron is there?"
+/*
+ * Main entry point for probability calculations.
+ * Computes the total wavefunction (radial * angular) and returns the squared intensity.
+ */
 float QuantumSimulation::computeProbability(float r, float theta, float phi, const QuantumState &state) {
-    float a0 = 4.0f;
+    float a0 = 4.0f; // Bohr radius (scaled for visualization)
     float n_f = static_cast<float>(state.n);
     float rho = (2.0f * r) / (static_cast<float>(state.n) * a0);
 
     int k = state.n - state.l - 1;
     int alpha = 2 * state.l + 1;
 
+    // Radial normalization
     float logCubeScale = 3.0f * std::log(2.0f / (n_f * a0));
     float logTopFact = std::lgammaf(static_cast<float>(state.n - state.l));
     float logBottomFact = std::lgammaf(static_cast<float>(state.n + state.l + 1));
@@ -93,16 +105,16 @@ float QuantumSimulation::computeProbability(float r, float theta, float phi, con
     float logRadNormSq = logCubeScale - std::log(2.0f * n_f) + logTopFact - logBottomFact;
     float radNorm = std::exp(0.5f * logRadNormSq);
 
-    // Calculate how likely it is to be at a certain distance.
+    // Radial component
     float radial = radNorm * std::exp(-rho / 2.0f) * std::pow(rho, static_cast<float>(state.l)) *
                    associatedLaguerre(k, alpha, rho);
 
-    // Calculate how likely it is to be at a certain angle.
+    // Angular component
     float angular = sphericalHarmonic(state.l, state.m, theta, phi);
 
-    // Multiply distance and angle probabilities together.
+    // Wavefunction (psi) = Radial * Angular
     float psi = radial * angular;
 
-    // Squaring the result gives the final probability density.
+    // Probability Density = |psi|^2
     return psi * psi;
 }
