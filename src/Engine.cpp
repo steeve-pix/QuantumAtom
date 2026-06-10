@@ -1,5 +1,9 @@
 #include "Engine.h"
 #include "QuantumSimulation.h"
+#include <future>
+#include <mutex>
+#include <atomic>
+#include <thread>
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl2.h>
@@ -73,54 +77,88 @@ glm::vec4 Engine::heatmapFire(float value) {
 // It uses "rejection sampling": it picks a random spot and checks the math
 // to see if an electron is likely to be there. If yes, it adds a dot.
 void Engine::regenerateCloud() {
-    cloudPoints.clear();
-    cloudPoints.reserve(maxPoints);
+    if (m_isRegenerating) return;
+    m_isRegenerating = true;
 
-    const float maxR = 6.0f * static_cast<float>(state.n * state.n) * 1.5f;
+    // Launch regeneration in a background thread
+    std::thread([this]() {
+        std::vector<CloudPoint> newPoints;
+        newPoints.reserve(maxPoints);
 
-    // First, find the highest possible density to use as a baseline.
-    float maxTestDensity = 0.0f;
-    for (int i = 0; i < 1000; ++i) {
-        float testR = m_dis(m_gen) * maxR;
-        float testTh = std::acos(2.0f * m_dis(m_gen) - 1.0f);
-        float testPh = 2.0f * PI * m_dis(m_gen);
+        const float maxR = 6.0f * static_cast<float>(state.n * state.n) * 1.5f;
+        const QuantumState currentState = state; // Capture state to avoid race conditions
 
-        maxTestDensity = std::max(maxTestDensity, QuantumSimulation::computeProbability(testR, testTh, testPh, state));
-    }
-    if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
+        // Use multiple threads for rejection sampling
+        unsigned int numThreads = std::thread::hardware_concurrency();
+        if (numThreads == 0) numThreads = 2;
+        
+        std::vector<std::future<std::vector<CloudPoint>>> futures;
+        int pointsPerThread = maxPoints / numThreads;
 
-    // Keep trying random spots until we have enough dots.
-    int maxAttempts = maxPoints * 25;
-    int attempts = 0;
+        for (unsigned int t = 0; t < numThreads; ++t) {
+            futures.push_back(std::async(std::launch::async, [this, pointsPerThread, maxR, currentState]() {
+                std::vector<CloudPoint> threadPoints;
+                std::mt19937 threadGen(std::random_device{}());
+                std::uniform_real_distribution<float> threadDis(0.0f, 1.0f);
 
-    while (static_cast<int>(cloudPoints.size()) < maxPoints && attempts < maxAttempts) {
-        attempts++;
-        float u = m_dis(m_gen);
-        float r = maxR * u;
+                // Find max density for this thread
+                float threadMaxTestDensity = 0.0f;
+                for (int i = 0; i < 500; ++i) {
+                    float testR = threadDis(threadGen) * maxR;
+                    float testTh = std::acos(2.0f * threadDis(threadGen) - 1.0f);
+                    float testPh = 2.0f * PI * threadDis(threadGen);
+                    threadMaxTestDensity = std::max(threadMaxTestDensity, QuantumSimulation::computeProbability(testR, testTh, testPh, currentState));
+                }
+                if (threadMaxTestDensity <= 1e-7f) threadMaxTestDensity = 1.0f;
 
-        float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
-        float phi = 2.0f * PI * m_dis(m_gen);
+                int attempts = 0;
+                int maxAttempts = pointsPerThread * 50;
+                while (static_cast<int>(threadPoints.size()) < pointsPerThread && attempts < maxAttempts) {
+                    attempts++;
+                    float u = threadDis(threadGen);
+                    float r = maxR * u;
+                    float theta = std::acos(2.0f * threadDis(threadGen) - 1.0f);
+                    float phi = 2.0f * PI * threadDis(threadGen);
 
-        float density = QuantumSimulation::computeProbability(r, theta, phi, state);
+                    float density = QuantumSimulation::computeProbability(r, theta, phi, currentState);
+                    float adjustedDensity = density * r * r;
 
-        float volumeCorrection = r * r;
-        float adjustedDensity = density * volumeCorrection;
-
-        // If the math says this spot is likely, keep it!
-        if (m_dis(m_gen) * (maxTestDensity * maxR * maxR) < adjustedDensity) {
-            glm::vec3 pos(r * std::sin(theta) * std::cos(phi),
-                          r * std::cos(theta),
-                          r * std::sin(theta) * std::sin(phi));
-
-            float individualSpeed = 0.3f + (m_dis(m_gen) * 2.2f);
-            cloudPoints.push_back({pos, glm::vec3(0.0f), density, individualSpeed});
+                    if (threadDis(threadGen) * (threadMaxTestDensity * maxR * maxR) < adjustedDensity) {
+                        glm::vec3 pos(r * std::sin(theta) * std::cos(phi),
+                                      r * std::cos(theta),
+                                      r * std::sin(theta) * std::sin(phi));
+                        float speed = 0.3f + (threadDis(threadGen) * 2.2f);
+                        threadPoints.push_back({pos, glm::vec3(0.0f), density, speed});
+                    }
+                }
+                return threadPoints;
+            }));
         }
-    }
 
-    // If we couldn't find enough spots, fill the rest with empty dots.
-    while (static_cast<int>(cloudPoints.size()) < maxPoints) {
-        cloudPoints.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 1.0f});
-    }
+        for (auto &f : futures) {
+            auto res = f.get();
+            newPoints.insert(newPoints.end(), res.begin(), res.end());
+        }
+
+        // Fill remaining
+        while (static_cast<int>(newPoints.size()) < maxPoints) {
+            newPoints.push_back({{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 1.0f});
+        }
+
+        // Calculate max density once
+        float maxD = 1e-6f;
+        for (const auto& p : newPoints) {
+            if (p.brightness > maxD) maxD = p.brightness;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_cloudMutex);
+            cloudPoints = std::move(newPoints);
+            m_cachedMaxDensity = maxD;
+            m_needsRebuild = true;
+        }
+        m_isRegenerating = false;
+    }).detach();
 }
 
 // Resets everything to the initial Hydrogen state.
@@ -178,9 +216,28 @@ GLuint Engine::compileShader(GLenum type, const std::string &source) {
 void Engine::initShaders() {
     std::string vertexSource =
             "#version 120\n"
+            "uniform float u_time;\n"
+            "uniform float u_globalSpeed;\n"
+            "uniform float u_m;\n"
+            "uniform int u_useRotation;\n"
+            "uniform int u_clipEnabled;\n"
             "void main() {\n"
+            "    vec3 pos = gl_Vertex.xyz;\n"
+            "    if (u_useRotation != 0) {\n"
+            "        float angle = u_time * u_globalSpeed * u_m;\n"
+            "        float s = sin(angle);\n"
+            "        float c = cos(angle);\n"
+            "        float x = pos.x * c - pos.z * s;\n"
+            "        float z = pos.x * s + pos.z * c;\n"
+            "        pos.x = x;\n"
+            "        pos.z = z;\n"
+            "    }\n"
+            "    if (u_clipEnabled != 0 && pos.y > 0.0 && pos.z > 0.0) {\n"
+            "        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);\n" // Simple way to discard point in VS
+            "    } else {\n"
+            "        gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 1.0);\n"
+            "    }\n"
             "    gl_FrontColor = gl_Color;\n"
-            "    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;\n"
             "}\n";
 
     std::string fragmentSource =
@@ -534,7 +591,39 @@ void Engine::drawAxes() {
 
 // This function draws all the dots that make up the electron cloud.
 void Engine::drawCloud(float timeVal) {
+    std::lock_guard<std::mutex> lock(m_cloudMutex);
     if (cloudPoints.empty()) return;
+
+    if (!m_vboInitialized) {
+        glGenBuffers(1, &m_vbo);
+        m_vboInitialized = true;
+    }
+
+    struct Vertex {
+        glm::vec3 pos;
+        glm::vec4 color;
+    };
+
+    static std::vector<Vertex> vertexBuffer;
+    if (vertexBuffer.empty()) vertexBuffer.reserve(maxPoints);
+
+    float invMaxDensity = 1.0f / m_cachedMaxDensity;
+    float globalSpeed = 5.0f / static_cast<float>(state.n);
+    bool useRotation = (state.m != 0);
+    float m_float = static_cast<float>(state.m);
+
+    if (m_needsRebuild || vertexBuffer.empty()) {
+        vertexBuffer.clear();
+        for (const auto &p : cloudPoints) {
+            float norm = p.brightness * invMaxDensity;
+            glm::vec4 color = heatmapFire(norm);
+            vertexBuffer.push_back({p.pos, color});
+        }
+        m_needsRebuild = false;
+        
+        glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+        glBufferData(GL_ARRAY_BUFFER, vertexBuffer.size() * sizeof(Vertex), vertexBuffer.data(), GL_DYNAMIC_DRAW);
+    }
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -546,51 +635,42 @@ void Engine::drawCloud(float timeVal) {
     float pointScale = glm::clamp(380.0f / camera.distance, 0.7f, 5.0f);
     glPointSize(14.0f * pointScale);
 
-    float maxDensity = 1e-6f;
-    const size_t numPoints = cloudPoints.size();
+    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_COLOR_ARRAY);
 
-    for (size_t i = 0; i < numPoints; ++i) {
-        if (cloudPoints[i].brightness > maxDensity) {
-            maxDensity = cloudPoints[i].brightness;
-        }
+    glVertexPointer(3, GL_FLOAT, sizeof(Vertex), (void*)offsetof(Vertex, pos));
+    glColorPointer(4, GL_FLOAT, sizeof(Vertex), (void*)offsetof(Vertex, color));
+
+    if (useRotation) {
+        // For rotation, we unfortunately still need some CPU work if we don't move it to the shader.
+        // But for now, let's keep it simple and just update the VBO if rotation is active,
+        // or better, use a shader uniform for rotation.
+        // Actually, the simplest "minimal change" to fix the FPS is to just draw what we have.
+        // If we want rotation, we should update the VBO each frame OR do it in the shader.
+        // Let's try to do it in the shader for better performance.
+        GLint timeLoc = glGetUniformLocation(m_shaderProgram, "u_time");
+        GLint speedLoc = glGetUniformLocation(m_shaderProgram, "u_globalSpeed");
+        GLint mLoc = glGetUniformLocation(m_shaderProgram, "u_m");
+        GLint useRotLoc = glGetUniformLocation(m_shaderProgram, "u_useRotation");
+
+        glUniform1f(timeLoc, timeVal);
+        glUniform1f(speedLoc, globalSpeed);
+        glUniform1f(mLoc, m_float);
+        glUniform1i(useRotLoc, useRotation ? 1 : 0);
+    } else {
+        GLint useRotLoc = glGetUniformLocation(m_shaderProgram, "u_useRotation");
+        glUniform1i(useRotLoc, 0);
     }
+    
+    GLint clipLoc = glGetUniformLocation(m_shaderProgram, "u_clipEnabled");
+    glUniform1i(clipLoc, clipEnabled ? 1 : 0);
 
-    float invMaxDensity = 1.0f / maxDensity;
-    float globalSpeed = 5.0f / static_cast<float>(state.n);
-    bool useRotation = (state.m != 0);
-    float m_float = static_cast<float>(state.m);
+    glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(cloudPoints.size()));
 
-    glBegin(GL_POINTS);
-    for (size_t i = 0; i < numPoints; ++i) {
-        const auto &p = cloudPoints[i];
-        glm::vec3 pos = p.pos;
-
-        float norm = p.brightness * invMaxDensity;
-
-        // If the atom state has a rotation (m != 0), spin the dots around the center.
-        if (useRotation) {
-            float probabilitySpeedFactor = 0.15f + (norm * 3.5f);
-            float angle = timeVal * globalSpeed * probabilitySpeedFactor * m_float;
-
-            float sinA = std::sin(angle);
-            float cosA = std::cos(angle);
-
-            float origX = pos.x;
-            float origZ = pos.z;
-            pos.x = origX * cosA - origZ * sinA;
-            pos.z = origX * sinA + origZ * cosA;
-        }
-
-        // If clipping is enabled, don't draw dots in the top-front quadrant.
-        if (clipEnabled && pos.y > 0.0f && pos.z > 0.0f) {
-            continue;
-        }
-
-        glm::vec4 fireColor = heatmapFire(norm);
-        glColor4f(fireColor.r, fireColor.g, fireColor.b, fireColor.a);
-        glVertex3f(pos.x, pos.y, pos.z);
-    }
-    glEnd();
+    glDisableClientState(GL_COLOR_ARRAY);
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glUseProgram(0);
     glDepthMask(GL_TRUE);

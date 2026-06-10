@@ -64,3 +64,7 @@ target_include_directories(glm INTERFACE external)
 # --- Linking ---
 # Link all dependencies to the main executable
 target_link_libraries(QuantumAtom PRIVATE glfw glad glm opengl32)
+
+if(MINGW)
+    target_link_options(QuantumAtom PRIVATE "-Wl,--allow-multiple-definition")
+endif()

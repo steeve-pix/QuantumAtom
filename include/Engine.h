@@ -1,6 +1,8 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
+#include <future>
+#include <mutex>
 #include <atomic>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -19,6 +21,8 @@ private:
     std::string m_title;
 
     GLuint m_shaderProgram = 0;
+    GLuint m_vbo = 0;
+    bool m_vboInitialized = false;
 
     float m_lastMouseX = 600.0f;
     float m_lastMouseY = 500.0f;
@@ -31,13 +35,15 @@ private:
     int m_frameCount = 0;
 
     int m_pointsGeneratedSoFar = 0;
-    bool m_needsRebuild = false;
-
-    GLuint m_cloudDisplayList = 0;
-    bool m_displayListCompiled = false;
+    std::atomic<bool> m_needsRebuild{false};
+    std::atomic<bool> m_isRegenerating{false};
+    float m_cachedMaxDensity = 1.0f;
 
     std::mt19937 m_gen;
     std::uniform_real_distribution<float> m_dis;
+
+    std::vector<CloudPoint> m_backBufferCloud;
+    std::mutex m_cloudMutex;
 
     // Changes a number into a color (hot/fire colors) to show density.
     glm::vec4 heatmapFire(float value);
