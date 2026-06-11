@@ -7,7 +7,7 @@
 
 void Camera::update(int width, int height, float deltaTime) {
     // Apply exponential smoothing for fluid camera movement
-    float blend = 1.0f - std::exp(-smoothness * deltaTime);
+    float blend = 1.0f - expf(-smoothness * deltaTime);
 
     // Interpolate towards target orientation and position
     yaw += (targetYaw - yaw) * blend;
@@ -16,41 +16,41 @@ void Camera::update(int width, int height, float deltaTime) {
     targetPos += (destinationTargetPos - targetPos) * blend;
 
     // Convert spherical coordinates to Cartesian for camera placement
-    glm::vec3 offset(
-        distance * std::cos(glm::radians(yaw)) * std::cos(glm::radians(pitch)),
-        distance * std::sin(glm::radians(pitch)),
-        distance * std::sin(glm::radians(yaw)) * std::cos(glm::radians(pitch))
+    vec3 offset(
+        distance * cosf(radians(yaw)) * cosf(radians(pitch)),
+        distance * sinf(radians(pitch)),
+        distance * sinf(radians(yaw)) * cosf(radians(pitch))
     );
 
-    glm::vec3 camPos = targetPos + offset;
+    vec3 camPos = targetPos + offset;
 
     // Construct view and projection matrices
-    glm::mat4 view = glm::lookAt(camPos, targetPos, glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 proj = glm::perspective(glm::radians(45.0f), static_cast<float>(width) / static_cast<float>(height),
+    mat4 view = lookAt(camPos, targetPos, vec3(0.0f, 1.0f, 0.0f));
+    mat4 proj = perspective(radians(45.0f), static_cast<float>(width) / static_cast<float>(height),
                                       0.1f, 6000.0f);
 
     // Load matrices into the legacy OpenGL pipeline
     glMatrixMode(GL_PROJECTION);
-    glLoadMatrixf(glm::value_ptr(proj));
+    glLoadMatrixf(value_ptr(proj));
     glMatrixMode(GL_MODELVIEW);
-    glLoadMatrixf(glm::value_ptr(view));
+    glLoadMatrixf(value_ptr(view));
 }
 
 void Camera::pan(float deltaX, float deltaY) {
-    float radYaw = glm::radians(yaw);
-    float radPitch = glm::radians(pitch);
+    float radYaw = radians(yaw);
+    float radPitch = radians(pitch);
 
     // Calculate camera direction vectors for local movement
-    glm::vec3 forward(
-        -std::cos(radYaw) * std::cos(radPitch),
-        -std::sin(radPitch),
-        -std::sin(radYaw) * std::cos(radPitch)
+    vec3 forward(
+        -cosf(radYaw) * cosf(radPitch),
+        -sinf(radPitch),
+        -sinf(radYaw) * cosf(radPitch)
     );
-    forward = glm::normalize(forward);
+    forward = normalize(forward);
 
-    glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
-    glm::vec3 right = glm::normalize(glm::cross(forward, worldUp));
-    glm::vec3 up = glm::cross(right, forward);
+    vec3 worldUp(0.0f, 1.0f, 0.0f);
+    vec3 right = normalize(cross(forward, worldUp));
+    vec3 up = cross(right, forward);
 
     // Adjust panning speed relative to camera distance
     float factor = distance * 0.0012f;
@@ -59,12 +59,12 @@ void Camera::pan(float deltaX, float deltaY) {
     destinationTargetPos += right * (-deltaX * factor) + up * (-deltaY * factor);
 }
 
-glm::mat4 Camera::getViewMatrix() const {
-    glm::vec3 offset(
-        distance * std::cos(glm::radians(yaw)) * std::cos(glm::radians(pitch)),
-        distance * std::sin(glm::radians(pitch)),
-        distance * std::sin(glm::radians(yaw)) * std::cos(glm::radians(pitch))
+mat4 Camera::getViewMatrix() const {
+    vec3 offset(
+        distance * cosf(radians(yaw)) * cosf(radians(pitch)),
+        distance * sinf(radians(pitch)),
+        distance * sinf(radians(yaw)) * cosf(radians(pitch))
     );
-    glm::vec3 camPos = targetPos + offset;
-    return glm::lookAt(camPos, targetPos, glm::vec3(0.0f, 1.0f, 0.0f));
+    vec3 camPos = targetPos + offset;
+    return lookAt(camPos, targetPos, vec3(0.0f, 1.0f, 0.0f));
 }

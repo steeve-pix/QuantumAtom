@@ -3,6 +3,9 @@
 
 #include <glm/glm.hpp>
 
+using namespace std;
+using namespace glm;
+
 /**
  * @class Camera
  * @brief Manages the 3D camera system with smooth interpolation.

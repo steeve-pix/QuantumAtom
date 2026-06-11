@@ -13,10 +13,10 @@
 #endif
 
 // Constructor: Initializes window, OpenGL, ImGui, and starts the initial cloud generation
-Engine::Engine(int width, int height, const std::string &title)
+Engine::Engine(int width, int height, const string &title)
     : m_width(width), m_height(height), m_title(title), m_dis(0.0f, 1.0f) {
-    std::random_device rd;
-    m_gen = std::mt19937(rd());
+    random_device rd;
+    m_gen = mt19937(rd());
 
     initGlfwWindow();
     initOpenGL();
@@ -44,12 +44,12 @@ Engine::~Engine() {
 }
 
 // Legacy CPU-side heatmap lookup (kept for historical reference/debugging)
-glm::vec4 Engine::heatmapFire(float value) {
+vec4 Engine::heatmapFire(float value) {
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
-    float t = std::pow(clamp_v, 0.35f);
+    float t = powf(clamp_v, 0.35f);
 
     const int num_stops = 7;
-    static const glm::vec3 stops[num_stops] = {
+    static const vec3 stops[num_stops] = {
         {0.280f, 0.000f, 0.550f},
         {0.450f, 0.000f, 0.650f},
         {0.800f, 0.000f, 0.550f},
@@ -64,11 +64,11 @@ glm::vec4 Engine::heatmapFire(float value) {
     int next_i = std::min(i + 1, num_stops - 1);
     float local_t = scaled_v - static_cast<float>(i);
 
-    glm::vec3 color = glm::mix(stops[i], stops[next_i], local_t);
-    float alpha = std::pow(t, 0.60f) * 0.95f;
+    vec3 color = mix(stops[i], stops[next_i], local_t);
+    float alpha = powf(t, 0.60f) * 0.95f;
     if (t < 0.03f) alpha *= (t / 0.03f);
 
-    return glm::vec4(color, alpha);
+    return vec4(color, alpha);
 }
 
 // Starts a background thread to generate new probability cloud points via rejection sampling
@@ -84,9 +84,9 @@ void Engine::regenerateCloud() {
     QuantumState capturedState = state;
     int targetPoints = maxPoints;
 
-    m_buildThread = std::thread([this, capturedState, targetPoints]() {
-        std::mt19937 gen(std::random_device{}());
-        std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+    m_buildThread = thread([this, capturedState, targetPoints]() {
+        mt19937 gen(random_device{}());
+        uniform_real_distribution<float> dis(0.0f, 1.0f);
 
         const float a0 = 4.0f;
         const float maxR = 6.0f * static_cast<float>(capturedState.n * capturedState.n) * 1.5f;
@@ -98,7 +98,7 @@ void Engine::regenerateCloud() {
             float testR = (i < 1500)
                               ? peakR * (0.5f + dis(gen) * 1.5f)
                               : dis(gen) * maxR;
-            float testTh = std::acos(2.0f * dis(gen) - 1.0f);
+            float testTh = acosf(2.0f * dis(gen) - 1.0f);
             float testPh = 2.0f * PI * dis(gen);
             maxTestDensity = std::max(maxTestDensity,
                                       QuantumSimulation::computeProbability(testR, testTh, testPh, capturedState));
@@ -106,7 +106,7 @@ void Engine::regenerateCloud() {
         if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
         maxTestDensity *= 1.15f;
 
-        std::vector<CloudPoint> newCloud;
+        vector<CloudPoint> newCloud;
         newCloud.reserve(targetPoints);
 
         int maxAttempts = targetPoints * 25;
@@ -118,20 +118,20 @@ void Engine::regenerateCloud() {
                && !m_buildCancelled.load()) {
             ++attempts;
             float r = maxR * dis(gen);
-            float theta = std::acos(2.0f * dis(gen) - 1.0f);
+            float theta = acosf(2.0f * dis(gen) - 1.0f);
             float phi = 2.0f * PI * dis(gen);
 
             float density = QuantumSimulation::computeProbability(r, theta, phi, capturedState);
             float adjustedDensity = density * r * r;
 
             if (dis(gen) * (maxTestDensity * maxR * maxR) < adjustedDensity) {
-                glm::vec3 pos(
-                    r * std::sin(theta) * std::cos(phi),
-                    r * std::cos(theta),
-                    r * std::sin(theta) * std::sin(phi)
+                vec3 pos(
+                    r * sinf(theta) * cosf(phi),
+                    r * cosf(theta),
+                    r * sinf(theta) * sinf(phi)
                 );
                 float spd = 0.3f + (dis(gen) * 2.2f);
-                newCloud.push_back({pos, glm::vec3(0.0f), density, spd});
+                newCloud.push_back({pos, vec3(0.0f), density, spd});
 
                 if ((newCloud.size() & 0xFF) == 0)
                     m_buildProgress.store((int) (newCloud.size() * 100 / targetPoints));
@@ -150,7 +150,7 @@ void Engine::regenerateCloud() {
 
         {
             // Thread-safe swap of the generated cloud
-            std::lock_guard<std::mutex> lock(m_swapMutex);
+            lock_guard<std::mutex> lock(m_swapMutex);
             m_pendingCloud = std::move(newCloud);
             m_cachedMaxDensity = maxD;
         }
@@ -168,10 +168,10 @@ void Engine::resetSimulation() {
     camera.targetYaw = -40.0f;
     camera.targetPitch = 25.0f;
     camera.targetDistance = 380.0f;
-    camera.destinationTargetPos = glm::vec3(0.0f);
+    camera.destinationTargetPos = vec3(0.0f);
     electronAngle = 0.0f;
     regenerateCloud();
-    std::cout << "[System] Simulation environment successfully reset.\n";
+    cout << "[System] Simulation environment successfully reset." << endl;
 }
 
 // Synchronous generation of a single point (legacy method)
@@ -180,17 +180,17 @@ void Engine::regenerateSinglePoint(CloudPoint &p) {
     float maxTargetProb = m_cachedMaxDensity;
 
     while (true) {
-        float r = std::cbrt(m_dis(m_gen)) * maxR;
-        float theta = std::acos(2.0f * m_dis(m_gen) - 1.0f);
+        float r = cbrtf(m_dis(m_gen)) * maxR;
+        float theta = acosf(2.0f * m_dis(m_gen) - 1.0f);
         float phi = 2.0f * PI * m_dis(m_gen);
 
         float prob = QuantumSimulation::computeProbability(r, theta, phi, state);
         float threshold = m_dis(m_gen) * maxTargetProb;
         if (prob > threshold) {
-            p.pos = glm::vec3(r * std::sin(theta) * std::cos(phi),
-                              r * std::sin(theta) * std::sin(phi),
-                              r * std::cos(theta));
-            p.vel = glm::vec3(0.0f);
+            p.pos = vec3(r * sinf(theta) * cosf(phi),
+                         r * sinf(theta) * sinf(phi),
+                         r * cosf(theta));
+            p.vel = vec3(0.0f);
             p.brightness = prob;
             return;
         }
@@ -202,11 +202,11 @@ void Engine::updatePhysics(float deltaTime) {
     float orbitSpeed = 4.5f / static_cast<float>(state.n * state.n);
     electronAngle += orbitSpeed * deltaTime;
     if (electronAngle > 2.0f * PI)
-        electronAngle = std::fmod(electronAngle, 2.0f * PI);
+        electronAngle = fmodf(electronAngle, 2.0f * PI);
 }
 
 // Utility to compile and check for errors in GLSL shaders
-GLuint Engine::compileShader(GLenum type, const std::string &source) {
+GLuint Engine::compileShader(GLenum type, const string &source) {
     GLuint shader = glCreateShader(type);
     const char *src = source.c_str();
     glShaderSource(shader, 1, &src, nullptr);
@@ -217,7 +217,7 @@ GLuint Engine::compileShader(GLenum type, const std::string &source) {
     if (!success) {
         char infoLog[512];
         glGetShaderInfoLog(shader, 512, nullptr, infoLog);
-        std::cerr << "[Shader Error] " << infoLog << "\n";
+        cerr << "[Shader Error] " << infoLog << endl;
     }
     return shader;
 }
@@ -225,7 +225,7 @@ GLuint Engine::compileShader(GLenum type, const std::string &source) {
 // Compiles and links the GLSL program used for point cloud rendering
 void Engine::initShaders() {
     // Vertex shader source: handles rotation and heatmap coloring
-    const std::string vertSrc = R"GLSL(
+    const string vertSrc = R"GLSL(
 #version 120
 attribute vec3  aPos;
 attribute float aNorm;
@@ -254,7 +254,7 @@ void main() {
         pos.z = newZ;
     }
 
-    vDiscard = (uClipEnabled == 1 && pos.y > 0.0 && pos.z > 0.0) ? 1.0 : 0.0;
+    vDiscard = (uClipEnabled == 1 && pos.x > 0.0 && pos.y > 0.0 && pos.z > 0.0) ? 1.0 : 0.0;
     vNorm    = aNorm;
 
     float t  = pow(aNorm, 0.35);
@@ -288,7 +288,7 @@ void main() {
 )GLSL";
 
     // Fragment shader source: handles point smoothing and clipping discard
-    const std::string fragSrc = R"GLSL(
+    const string fragSrc = R"GLSL(
 #version 120
 varying float vNorm;
 varying float vDiscard;
@@ -319,7 +319,7 @@ void main() {
     if (!ok) {
         char log[512];
         glGetProgramInfoLog(m_shaderProgram, 512, nullptr, log);
-        std::cerr << "[Shader Link Error] " << log << "\n";
+        cerr << "[Shader Link Error] " << log << "\n";
     }
 
     glDeleteShader(vs);
@@ -396,14 +396,14 @@ void Engine::renderUI() {
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         stateChanged = true;
         if (state.l >= state.n) state.l = state.n - 1;
-        state.m = glm::clamp(state.m, -state.l, state.l);
+        state.m = std::clamp(state.m, -state.l, state.l);
     }
     ImGui::TextDisabled("Defines energy shell and size limit boundaries.");
 
     ImGui::SliderInt("Azimuthal (l)", &state.l, 0, state.n - 1);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         stateChanged = true;
-        state.m = glm::clamp(state.m, -state.l, state.l);
+        state.m = std::clamp(state.m, -state.l, state.l);
     }
     ImGui::TextDisabled("Defines the subshell shape layout geometry (s, p, d, f).");
 
@@ -486,7 +486,7 @@ void Engine::renderUI() {
 void Engine::drawScene(float currentFrameTime, float deltaTime) {
     if (m_cloudReady.load()) {
         {
-            std::lock_guard<std::mutex> lock(m_swapMutex);
+            lock_guard<std::mutex> lock(m_swapMutex);
             cloudPoints = std::move(m_pendingCloud);
         }
         m_cloudReady.store(false);
@@ -509,7 +509,7 @@ void Engine::drawScene(float currentFrameTime, float deltaTime) {
 
 // Initializes GLFW and creates the main application window
 void Engine::initGlfwWindow() {
-    if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW.");
+    if (!glfwInit()) throw runtime_error("Failed to initialize GLFW.");
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
@@ -517,7 +517,7 @@ void Engine::initGlfwWindow() {
     window = glfwCreateWindow(m_width, m_height, m_title.c_str(), nullptr, nullptr);
     if (!window) {
         glfwTerminate();
-        throw std::runtime_error("Failed to create GLFW window.");
+        throw runtime_error("Failed to create GLFW window.");
     }
 
     glfwMakeContextCurrent(window);
@@ -528,7 +528,7 @@ void Engine::initGlfwWindow() {
 // Initializes Glad and configures basic OpenGL state
 void Engine::initOpenGL() {
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
-        throw std::runtime_error("Failed to initialize GLAD.");
+        throw runtime_error("Failed to initialize GLAD.");
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -577,7 +577,7 @@ void Engine::setupCallbacks() {
             if (key == GLFW_KEY_DOWN) {
                 eng->state.n = std::max(eng->state.n - 1, 1);
                 if (eng->state.l >= eng->state.n) eng->state.l = eng->state.n - 1;
-                eng->state.m = glm::clamp(eng->state.m, -eng->state.l, eng->state.l);
+                eng->state.m = std::clamp(eng->state.m, -eng->state.l, eng->state.l);
                 changed = true;
             }
             if (key == GLFW_KEY_C && action == GLFW_PRESS)
@@ -618,7 +618,7 @@ void Engine::setupCallbacks() {
             else if (eng->m_mouseButtonDown == GLFW_MOUSE_BUTTON_LEFT) {
                 eng->camera.targetYaw += dx * 0.18f;
                 eng->camera.targetPitch += dy * 0.18f;
-                eng->camera.targetPitch = glm::clamp(eng->camera.targetPitch, -89.0f, 89.0f);
+                eng->camera.targetPitch = std::clamp(eng->camera.targetPitch, -89.0f, 89.0f);
             }
         }
     });
@@ -628,7 +628,7 @@ void Engine::setupCallbacks() {
         if (!ImGui::GetIO().WantCaptureMouse) {
             auto *eng = static_cast<Engine *>(glfwGetWindowUserPointer(win));
             eng->camera.targetDistance -= static_cast<float>(yoff) * 22.0f;
-            eng->camera.targetDistance = glm::clamp(eng->camera.targetDistance, 60.0f, 1400.0f);
+            eng->camera.targetDistance = std::clamp(eng->camera.targetDistance, 60.0f, 1400.0f);
         }
     });
 
@@ -666,9 +666,9 @@ void Engine::drawCloud(float timeVal) {
         for (const auto &p: cloudPoints) maxD = std::max(maxD, p.brightness);
         float invMax = 1.0f / maxD;
 
-        std::vector<float> positions(n * 3);
-        std::vector<float> norms(n);
-        std::vector<float> speeds(n);
+        vector<float> positions(n * 3);
+        vector<float> norms(n);
+        vector<float> speeds(n);
 
         for (size_t i = 0; i < n; ++i) {
             const auto &p = cloudPoints[i];
@@ -679,18 +679,24 @@ void Engine::drawCloud(float timeVal) {
             speeds[i] = p.speedFactor;
         }
 
-        if (!m_posVbo) glGenBuffers(1, &m_posVbo);
-        if (!m_normVbo) glGenBuffers(1, &m_normVbo);
-        if (!m_speedVbo) glGenBuffers(1, &m_speedVbo);
+        if (!m_posVbo)
+            glGenBuffers(1, &m_posVbo);
+        if (!m_normVbo)
+            glGenBuffers(1, &m_normVbo);
+        if (!m_speedVbo)
+            glGenBuffers(1, &m_speedVbo);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (positions.size() * sizeof(float)), positions.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(positions.size() * sizeof(float)), positions.data(),
+                     GL_STATIC_DRAW);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_normVbo);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (norms.size() * sizeof(float)), norms.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(norms.size() * sizeof(float)), norms.data(),
+                     GL_STATIC_DRAW);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_speedVbo);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) (speeds.size() * sizeof(float)), speeds.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(speeds.size() * sizeof(float)), speeds.data(),
+                     GL_STATIC_DRAW);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         m_vboDirty = false;
@@ -704,7 +710,7 @@ void Engine::drawCloud(float timeVal) {
 
     glUseProgram(m_shaderProgram);
 
-    float pointScale = glm::clamp(380.0f / camera.distance, 0.7f, 5.0f);
+    float pointScale = std::clamp(380.0f / camera.distance, 0.7f, 5.0f);
     glUniform1f(m_uTime, timeVal);
     glUniform1f(m_uGlobalSpeed, 5.0f / static_cast<float>(state.n));
     glUniform1f(m_uMFloat, static_cast<float>(state.m));
@@ -737,11 +743,11 @@ void Engine::drawCloud(float timeVal) {
 // Renders a single white point to represent a classically tracked electron
 void Engine::drawActiveElectron() {
     float radius = 14.5f * static_cast<float>(state.n * state.n);
-    float x = radius * std::cos(electronAngle);
-    float y = (state.l > 0) ? radius * std::sin(electronAngle) * 0.5f : 0.0f;
+    float x = radius * cosf(electronAngle);
+    float y = (state.l > 0) ? radius * sinf(electronAngle) * 0.5f : 0.0f;
     float z = (state.l > 0)
-                  ? radius * std::sin(electronAngle) * std::sqrt(1.0f - 0.5f * 0.5f)
-                  : radius * std::sin(electronAngle);
+                  ? radius * sinf(electronAngle) * sqrtf(1.0f - 0.5f * 0.5f)
+                  : radius * sinf(electronAngle);
 
     glPointSize(12.0f);
     glBegin(GL_POINTS);

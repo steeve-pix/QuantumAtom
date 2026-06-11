@@ -12,6 +12,9 @@
 #include "Camera.h"
 #include "QuantumTypes.h"
 
+using namespace std;
+using namespace glm;
+
 /**
  * @class Engine
  * @brief Orchestrates the application lifecycle, including rendering, simulation, and user interaction.

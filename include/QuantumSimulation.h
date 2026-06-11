@@ -3,6 +3,8 @@
 
 #include "QuantumTypes.h"
 
+using namespace std;
+
 /**
  * @class QuantumSimulation
  * @brief Mathematical engine for calculating electron probability distributions.
