@@ -5,7 +5,6 @@
 #include <backends/imgui_impl_opengl2.h>
 #include <iostream>
 #include <stdexcept>
-#include <cmath>
 #include <algorithm>
 
 #ifndef PI

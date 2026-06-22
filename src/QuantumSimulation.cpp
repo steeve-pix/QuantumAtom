@@ -1,5 +1,4 @@
 #include "QuantumSimulation.h"
-#include <cmath>
 #include <algorithm>
 
 #ifndef PI

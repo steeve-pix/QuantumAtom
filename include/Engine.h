@@ -84,7 +84,7 @@ private:
 
     /** @name Initialization Helpers */
     ///@{
-    glm::vec4 heatmapFire(float value);
+    static vec4 heatmapFire(float value);
     void initGlfwWindow();
     void initOpenGL();
     void initImGui();
