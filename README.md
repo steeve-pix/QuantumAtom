@@ -19,19 +19,6 @@
 
 ---
 
-## 🖼️ Screenshots
-
-<p align="center">
-  <img src="img/Screenshot 2026-06-08 223906.png" width="45%" alt="Orbital View 1" />
-  <img src="img/Screenshot 2026-06-08 224002.png" width="45%" alt="Orbital View 2" />
-</p>
-<p align="center">
-  <img src="img/Screenshot 2026-06-08 223937.png" width="45%" alt="Orbital View 3" />
-  <img src="img/Screenshot 2026-06-08 224025.png" width="45%" alt="Orbital View 4" />
-</p>
-
----
-
 ## 🚀 Getting Started
 
 ### Prerequisites
