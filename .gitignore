@@ -2,3 +2,5 @@
 /.idea/
 /external/
 /img/
+/cmake-build-debug/
+/cmake-build-release/
