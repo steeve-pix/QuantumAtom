@@ -133,7 +133,7 @@ void Engine::regenerateCloud() {
                 newCloud.push_back({pos, vec3(0.0f), density, spd});
 
                 if ((newCloud.size() & 0xFF) == 0)
-                    m_buildProgress.store((int) (newCloud.size() * 100 / targetPoints));
+                    m_buildProgress.store(static_cast<int>(newCloud.size() * 100 / targetPoints));
             }
         }
 
@@ -367,7 +367,7 @@ void Engine::renderUI() {
         ImGui::Separator();
         ImGui::Text("Performance:   %.1f ms", m_frameTimeMs);
         ImGui::Text("FPS:     %.2f", m_fps);
-        ImGui::Text("Points:  %d / %d", (int) cloudPoints.size(), maxPoints);
+        ImGui::Text("Points:  %d / %d", static_cast<int>(cloudPoints.size()), maxPoints);
         bool building = m_buildThread.joinable() && !m_cloudReady.load();
         if (building) {
             int pct = m_buildProgress.load();

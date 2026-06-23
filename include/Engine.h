@@ -52,8 +52,8 @@ private:
     std::thread m_buildThread;                 /**< Thread for background cloud generation */
     std::mutex m_swapMutex;                    /**< Protects access to pending cloud data */
     std::vector<CloudPoint> m_pendingCloud;    /**< Buffer for newly generated cloud points */
-    std::atomic<bool> m_cloudReady{false};     /**< Flag indicating if pending cloud is ready to swap */
-    std::atomic<bool> m_buildCancelled{false}; /**< Signal to abort current build thread */
+    std::atomic<bool> m_cloudReady{false};     /**< Flag indicating if a pending cloud is ready to swap */
+    std::atomic<bool> m_buildCancelled{false}; /**< Signal to abort the current build thread */
     std::atomic<int> m_buildProgress{0};       /**< Percentage of generation completion */
     ///@}
 
@@ -114,7 +114,7 @@ public:
     /** @brief Generates a single point based on current probability density. */
     void regenerateSinglePoint(CloudPoint &p);
 
-    /** @brief Updates logical state for each frame. */
+    /** @brief Updates the logical state for each frame. */
     void updatePhysics(float deltaTime);
 
     /** @name Rendering Functions */

@@ -29,7 +29,7 @@ public:
      * @brief Updates camera state and applies smoothing.
      * @param width Viewport width
      * @param height Viewport height
-     * @param deltaTime Time elapsed since last frame
+     * @param deltaTime Time elapsed since the last frame
      */
     void update(int width, int height, float deltaTime);
 
@@ -44,5 +44,5 @@ public:
      * @brief Computes the view matrix.
      * @return 4x4 view transformation matrix
      */
-    glm::mat4 getViewMatrix() const;
+    mat4 getViewMatrix() const;
 };
