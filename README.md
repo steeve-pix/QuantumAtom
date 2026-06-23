@@ -75,7 +75,7 @@ The density $\rho = |\psi|^2$ is sampled using a rejection sampling algorithm to
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
 
 ---
 
