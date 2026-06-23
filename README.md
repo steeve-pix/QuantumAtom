@@ -8,18 +8,18 @@
 
 ---
 
-## ✨ Features
+## Features
 
-- **🔬 Realistic Quantum Simulation**: Computes probability densities using Associated Laguerre and Legendre polynomials.
-- **⚡ Multithreaded Engine**: Background cloud generation ensures smooth UI performance even with 250,000+ points.
-- **🎮 Interactive UI**: Real-time adjustment of quantum numbers ($n$, $l$, $m$) and visualization parameters via ImGui.
-- **🎨 Dynamic Heatmaps**: Visualizes density gradients using high-contrast "fire" heatmaps.
-- **📸 Cross-Section View**: Integrated clipping planes to inspect the internal structure of complex orbitals.
-- **🎥 Smooth Navigation**: Full 3D camera control with orbital rotation and zoom.
+- **Realistic Quantum Simulation**: Computes probability densities using Associated Laguerre and Legendre polynomials.
+- **Multithreaded Engine**: Background cloud generation ensures smooth UI performance even with 250,000+ points.
+- **Interactive UI**: Real-time adjustment of quantum numbers ($n$, $l$, $m$) and visualization parameters via ImGui.
+- **Dynamic Heatmaps**: Visualizes density gradients using high-contrast "fire" heatmaps.
+- **Cross-Section View**: Integrated clipping planes to inspect the internal structure of complex orbitals.
+- **Smooth Navigation**: Full 3D camera control with orbital rotation and zoom.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -51,7 +51,7 @@ Ensure you have the following installed:
 
 ---
 
-## 🛠️ Controls & Usage
+## Controls & Usage
 
 | Input | Action |
 | :--- | :--- |
@@ -63,7 +63,7 @@ Ensure you have the following installed:
 
 ---
 
-## 📚 How It Works
+## How It Works
 
 The simulation solves the time-independent Schrödinger equation for a hydrogen-like atom. The wavefunction $\psi_{nlm}(r, \theta, \phi)$ is decomposed into:
 1. **Radial Part**: $R_{nl}(r)$ using Associated Laguerre polynomials.
@@ -73,7 +73,7 @@ The density $\rho = |\psi|^2$ is sampled using a rejection sampling algorithm to
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
