@@ -1,5 +1,4 @@
-#ifndef ENGINE_H
-#define ENGINE_H
+#pragma once
 
 #include <atomic>
 #include <thread>
@@ -130,4 +129,3 @@ public:
     ///@}
 };
 
-#endif

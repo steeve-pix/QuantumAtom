@@ -1,5 +1,4 @@
-#ifndef QUANTUM_SIMULATION_H
-#define QUANTUM_SIMULATION_H
+#pragma once
 
 #include "QuantumTypes.h"
 
@@ -37,5 +36,3 @@ private:
      */
     static float sphericalHarmonic(int l, int m, float theta, float phi);
 };
-
-#endif

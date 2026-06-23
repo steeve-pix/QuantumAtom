@@ -1,5 +1,4 @@
-#ifndef QUANTUM_TYPES_H
-#define QUANTUM_TYPES_H
+#pragma once
 
 #include <glm/glm.hpp>
 
@@ -23,5 +22,3 @@ struct QuantumState {
     int l = 0; /**< Azimuthal quantum number: Determines the shape of the orbital */
     int m = 0; /**< Magnetic quantum number: Determines the orientation of the orbital in space */
 };
-
-#endif
