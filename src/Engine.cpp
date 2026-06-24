@@ -67,7 +67,7 @@ vec4 Engine::heatmapFire(float value) {
     float alpha = powf(t, 0.60f) * 0.95f;
     if (t < 0.03f) alpha *= (t / 0.03f);
 
-    return vec4(color, alpha);
+    return {vec4(color, alpha)};
 }
 
 // Starts a background thread to generate new probability cloud points via rejection sampling
@@ -375,7 +375,7 @@ void Engine::renderUI() {
             ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Building cloud...");
             char buf[16];
             snprintf(buf, sizeof(buf), "%d%%", pct);
-            ImGui::ProgressBar(pct / 100.0f, ImVec2(-1.0f, 0.0f), buf);
+            ImGui::ProgressBar(static_cast<float>(pct) / 100.0f, ImVec2(-1.0f, 0.0f), buf);
         }
     }
     ImGui::End();

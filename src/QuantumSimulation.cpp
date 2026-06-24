@@ -26,7 +26,7 @@ float QuantumSimulation::associatedLegendre(int l, int m, float x) {
 
     float pll = 0.0f;
     for (int ll = absM + 2; ll <= l; ll++) {
-        float f_ll = static_cast<float>(ll);
+        auto f_ll = static_cast<float>(ll);
         pll = (x * (2.0f * f_ll - 1.0f) * pmmp1 - (f_ll + static_cast<float>(absM) - 1.0f) * pmm) / (
                   f_ll - static_cast<float>(absM));
         pmm = pmmp1;
@@ -37,7 +37,7 @@ float QuantumSimulation::associatedLegendre(int l, int m, float x) {
 
 // Computes the Associated Laguerre Polynomials for the radial component of the wavefunction
 float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
-    float f_alpha = static_cast<float>(alpha);
+    auto f_alpha = static_cast<float>(alpha);
     if (k == 0) return 1.0f;
     if (k == 1) return 1.0f + f_alpha - x;
 
@@ -46,7 +46,7 @@ float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
     float L2 = 0.0f;
 
     for (int j = 2; j <= k; j++) {
-        float f_j = static_cast<float>(j);
+        auto f_j = static_cast<float>(j);
         L2 = ((2.0f * f_j - 1.0f + f_alpha - x) * L1 - (f_j - 1.0f + f_alpha) * L0) / f_j;
         L0 = L1;
         L1 = L2;
@@ -79,7 +79,7 @@ float QuantumSimulation::sphericalHarmonic(int l, int m, float theta, float phi)
 // Entry point for probability density calculations based on quantum numbers
 float QuantumSimulation::computeProbability(float r, float theta, float phi, const QuantumState &state) {
     float a0 = 4.0f; // Scaled Bohr radius
-    float n_f = static_cast<float>(state.n);
+    auto n_f = static_cast<float>(state.n);
     float rho = (2.0f * r) / (static_cast<float>(state.n) * a0);
 
     int k = state.n - state.l - 1;
