@@ -12,10 +12,10 @@
 #endif
 
 // Constructor: Initializes window, OpenGL, ImGui, and starts the initial cloud generation
-Engine::Engine(int width, int height, const string &title)
+Engine::Engine(int width, int height, const std::string &title)
     : m_width(width), m_height(height), m_title(title), m_dis(0.0f, 1.0f) {
-    random_device rd;
-    m_gen = mt19937(rd());
+    std::random_device rd;
+    m_gen = std::mt19937(rd());
 
     initGlfwWindow();
     initOpenGL();
@@ -43,12 +43,12 @@ Engine::~Engine() {
 }
 
 // Legacy CPU-side heatmap lookup (kept for historical reference/debugging)
-vec4 Engine::heatmapFire(float value) {
+glm::vec4 Engine::heatmapFire(float value) {
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
     float t = powf(clamp_v, 0.35f);
 
     const int num_stops = 7;
-    static const vec3 stops[num_stops] = {
+    static const glm::vec3 stops[num_stops] = {
         {0.280f, 0.000f, 0.550f},
         {0.450f, 0.000f, 0.650f},
         {0.800f, 0.000f, 0.550f},
@@ -63,11 +63,11 @@ vec4 Engine::heatmapFire(float value) {
     int next_i = std::min(i + 1, num_stops - 1);
     float local_t = scaled_v - static_cast<float>(i);
 
-    vec3 color = mix(stops[i], stops[next_i], local_t);
+    glm::vec3 color = mix(stops[i], stops[next_i], local_t);
     float alpha = powf(t, 0.60f) * 0.95f;
     if (t < 0.03f) alpha *= (t / 0.03f);
 
-    return {vec4(color, alpha)};
+    return {glm::vec4(color, alpha)};
 }
 
 // Starts a background thread to generate new probability cloud points via rejection sampling
@@ -83,9 +83,9 @@ void Engine::regenerateCloud() {
     QuantumState capturedState = state;
     int targetPoints = maxPoints;
 
-    m_buildThread = thread([this, capturedState, targetPoints]() {
-        mt19937 gen(random_device{}());
-        uniform_real_distribution<float> dis(0.0f, 1.0f);
+    m_buildThread = std::thread([this, capturedState, targetPoints]() {
+        std::mt19937 gen(std::random_device{}());
+        std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 
         const float a0 = 4.0f;
         const float maxR = 6.0f * static_cast<float>(capturedState.n * capturedState.n) * 1.5f;
@@ -105,7 +105,7 @@ void Engine::regenerateCloud() {
         if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
         maxTestDensity *= 1.15f;
 
-        vector<CloudPoint> newCloud;
+        std::vector<CloudPoint> newCloud;
         newCloud.reserve(targetPoints);
 
         int maxAttempts = targetPoints * 25;
@@ -124,13 +124,13 @@ void Engine::regenerateCloud() {
             float adjustedDensity = density * r * r;
 
             if (dis(gen) * (maxTestDensity * maxR * maxR) < adjustedDensity) {
-                vec3 pos(
+                glm::vec3 pos(
                     r * sinf(theta) * cosf(phi),
                     r * cosf(theta),
                     r * sinf(theta) * sinf(phi)
                 );
                 float spd = 0.3f + (dis(gen) * 2.2f);
-                newCloud.push_back({pos, vec3(0.0f), density, spd});
+                newCloud.push_back({pos, glm::vec3(0.0f), density, spd});
 
                 if ((newCloud.size() & 0xFF) == 0)
                     m_buildProgress.store(static_cast<int>(newCloud.size() * 100 / targetPoints));
@@ -149,7 +149,7 @@ void Engine::regenerateCloud() {
 
         {
             // Thread-safe swap of the generated cloud
-            lock_guard<std::mutex> lock(m_swapMutex);
+            std::lock_guard<std::mutex> lock(m_swapMutex);
             m_pendingCloud = std::move(newCloud);
             m_cachedMaxDensity = maxD;
         }
@@ -167,10 +167,10 @@ void Engine::resetSimulation() {
     camera.targetYaw = -40.0f;
     camera.targetPitch = 25.0f;
     camera.targetDistance = 380.0f;
-    camera.destinationTargetPos = vec3(0.0f);
+    camera.destinationTargetPos = glm::vec3(0.0f);
     electronAngle = 0.0f;
     regenerateCloud();
-    cout << "[System] Simulation environment successfully reset." << endl;
+    std::cout << "[System] Simulation environment successfully reset." << std::endl;
 }
 
 // Synchronous generation of a single point (legacy method)
@@ -186,10 +186,10 @@ void Engine::regenerateSinglePoint(CloudPoint &p) {
         float prob = QuantumSimulation::computeProbability(r, theta, phi, state);
         float threshold = m_dis(m_gen) * maxTargetProb;
         if (prob > threshold) {
-            p.pos = vec3(r * sinf(theta) * cosf(phi),
+            p.pos = glm::vec3(r * sinf(theta) * cosf(phi),
                          r * sinf(theta) * sinf(phi),
                          r * cosf(theta));
-            p.vel = vec3(0.0f);
+            p.vel = glm::vec3(0.0f);
             p.brightness = prob;
             return;
         }
@@ -205,7 +205,7 @@ void Engine::updatePhysics(float deltaTime) {
 }
 
 // Utility to compile and check for errors in GLSL shaders
-GLuint Engine::compileShader(GLenum type, const string &source) {
+GLuint Engine::compileShader(GLenum type, const std::string &source) {
     GLuint shader = glCreateShader(type);
     const char *src = source.c_str();
     glShaderSource(shader, 1, &src, nullptr);
@@ -216,7 +216,7 @@ GLuint Engine::compileShader(GLenum type, const string &source) {
     if (!success) {
         char infoLog[512];
         glGetShaderInfoLog(shader, 512, nullptr, infoLog);
-        cerr << "[Shader Error] " << infoLog << endl;
+        std::cerr << "[Shader Error] " << infoLog << std::endl;
     }
     return shader;
 }
@@ -224,7 +224,7 @@ GLuint Engine::compileShader(GLenum type, const string &source) {
 // Compiles and links the GLSL program used for point cloud rendering
 void Engine::initShaders() {
     // Vertex shader source: handles rotation and heatmap coloring
-    const string vertSrc = R"GLSL(
+    const std::string vertSrc = R"GLSL(
 #version 120
 attribute vec3  aPos;
 attribute float aNorm;
@@ -287,7 +287,7 @@ void main() {
 )GLSL";
 
     // Fragment shader source: handles point smoothing and clipping discard
-    const string fragSrc = R"GLSL(
+    const std::string fragSrc = R"GLSL(
 #version 120
 varying float vNorm;
 varying float vDiscard;
@@ -318,7 +318,7 @@ void main() {
     if (!ok) {
         char log[512];
         glGetProgramInfoLog(m_shaderProgram, 512, nullptr, log);
-        cerr << "[Shader Link Error] " << log << "\n";
+        std::cerr << "[Shader Link Error] " << log << std::endl;
     }
 
     glDeleteShader(vs);
@@ -485,7 +485,7 @@ void Engine::renderUI() {
 void Engine::drawScene(float currentFrameTime, float deltaTime) {
     if (m_cloudReady.load()) {
         {
-            lock_guard<std::mutex> lock(m_swapMutex);
+            std::lock_guard<std::mutex> lock(m_swapMutex);
             cloudPoints = std::move(m_pendingCloud);
         }
         m_cloudReady.store(false);
@@ -508,7 +508,7 @@ void Engine::drawScene(float currentFrameTime, float deltaTime) {
 
 // Initializes GLFW and creates the main application window
 void Engine::initGlfwWindow() {
-    if (!glfwInit()) throw runtime_error("Failed to initialize GLFW.");
+    if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW.");
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
@@ -516,7 +516,7 @@ void Engine::initGlfwWindow() {
     window = glfwCreateWindow(m_width, m_height, m_title.c_str(), nullptr, nullptr);
     if (!window) {
         glfwTerminate();
-        throw runtime_error("Failed to create GLFW window.");
+        throw std::runtime_error("Failed to create GLFW window.");
     }
 
     glfwMakeContextCurrent(window);
@@ -527,7 +527,7 @@ void Engine::initGlfwWindow() {
 // Initializes Glad and configures basic OpenGL state
 void Engine::initOpenGL() {
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
-        throw runtime_error("Failed to initialize GLAD.");
+        throw std::runtime_error("Failed to initialize GLAD.");
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -665,9 +665,9 @@ void Engine::drawCloud(float timeVal) {
         for (const auto &p: cloudPoints) maxD = std::max(maxD, p.brightness);
         float invMax = 1.0f / maxD;
 
-        vector<float> positions(n * 3);
-        vector<float> norms(n);
-        vector<float> speeds(n);
+        std::vector<float> positions(n * 3);
+        std::vector<float> norms(n);
+        std::vector<float> speeds(n);
 
         for (size_t i = 0; i < n; ++i) {
             const auto &p = cloudPoints[i];

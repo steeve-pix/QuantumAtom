@@ -11,9 +11,6 @@
 #include "Camera.h"
 #include "QuantumTypes.h"
 
-using namespace std;
-using namespace glm;
-
 /**
  * @class Engine
  * @brief Orchestrates the application lifecycle, including rendering, simulation, and user interaction.
@@ -83,7 +80,7 @@ private:
 
     /** @name Initialization Helpers */
     ///@{
-    static vec4 heatmapFire(float value);
+    static glm::vec4 heatmapFire(float value);
     void initGlfwWindow();
     void initOpenGL();
     void initImGui();

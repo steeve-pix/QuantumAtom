@@ -2,9 +2,6 @@
 
 #include <glm/glm.hpp>
 
-using namespace std;
-using namespace glm;
-
 /**
  * @class Camera
  * @brief Manages the 3D camera system with smooth interpolation.
@@ -44,5 +41,5 @@ public:
      * @brief Computes the view matrix.
      * @return 4x4 view transformation matrix
      */
-    mat4 getViewMatrix() const;
+    glm::mat4 getViewMatrix() const;
 };
