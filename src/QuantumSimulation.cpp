@@ -7,7 +7,7 @@
 
 // Computes the Associated Legendre Polynomials for the angular component of the wavefunction
 float QuantumSimulation::associatedLegendre(int l, int m, float x) {
-    int absM = abs(m);
+    int absM = std::abs(m);
     if (absM > l) return 0.0f;
 
     float pmm = 1.0f;
