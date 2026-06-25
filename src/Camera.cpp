@@ -65,5 +65,5 @@ glm::mat4 Camera::getViewMatrix() const {
         distance * sinf(glm::radians(yaw)) * cosf(glm::radians(pitch))
     );
     glm::vec3 camPos = targetPos + offset;
-    return lookAt(camPos, targetPos, glm::vec3(0.0f, 1.0f, 0.0f));
+    return glm::lookAt(camPos, targetPos, glm::vec3(0.0f, 1.0f, 0.0f));
 }
