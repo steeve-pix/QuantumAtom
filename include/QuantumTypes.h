@@ -5,12 +5,10 @@
 /**
  * @struct CloudPoint
  * @brief Represents a single data point within the quantum probability cloud.
- * 
- * Memory-optimized: 28 bytes per point (removed unused vel field).
- * With 250,000 points: 7 MB instead of 10.5 MB.
  */
 struct CloudPoint {
     glm::vec3 pos;           /**< 3D position of the point */
+    glm::vec3 vel;        /**< Velocity vector (reserved for future physics simulations) */
     float brightness;        /**< Probability density value at this location */
     float speedFactor;       /**< Multiplier for the point's rotation speed */
 };
