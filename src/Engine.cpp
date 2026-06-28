@@ -1,5 +1,5 @@
-#include "Engine.h"
-#include "QuantumSimulation.h"
+#include "core/Engine.h"
+#include "math/QuantumSimulation.h"
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl2.h>
