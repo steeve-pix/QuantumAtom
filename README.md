@@ -25,7 +25,7 @@
 
 Ensure you have the following installed:
 - **CMake** (3.20 or higher)
-- **C++17 Compiler** (MSVC, GCC, or Clang)
+- **C++23 Compiler** (MSVC, GCC, or Clang)
 - **OpenGL 3.3+** compatible drivers
 
 ### Installation
