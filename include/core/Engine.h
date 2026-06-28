@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 #include <random>
-#include "Camera.h"
-#include "QuantumTypes.h"
+#include "utils/Camera.h"
+#include "utils/QuantumTypes.h"
 
 /**
  * @class Engine

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "QuantumTypes.h"
+#include "utils/QuantumTypes.h"
 
 /**
  * @class QuantumSimulation
