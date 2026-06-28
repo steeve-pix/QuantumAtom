@@ -1,8 +1,8 @@
 # ⚛️ QuantumAtom: Hydrogen-like Orbital Visualizer
 
 ![GitHub license](https://img.shields.io/github/license/steeve-pix/Atom)
-![C++](https://img.shields.io/badge/language-C%2B%2B17-blue.svg)
-![OpenGL](https://img.shields.io/badge/Graphics-OpenGL%203.3-orange.svg)
+![C++](https://img.shields.io/badge/language-C%2B%2B23-blue.svg)
+![OpenGL](https://img.shields.io/badge/Graphics-OpenGL%202-orange.svg)
 
 **QuantumAtom** is a high-performance, real-time 3D visualization engine for hydrogen-like atomic orbitals. It utilizes modern OpenGL and multithreaded computation to render electron probability densities (wavefunctions) through interactive point clouds.
 
