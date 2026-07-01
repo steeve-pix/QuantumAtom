@@ -30,7 +30,7 @@ private:
     static float associatedLaguerre(int k, int alpha, float x);
 
     /**
-     * @brief Computes the spherical harmonic component of the wavefunction.
+     * @brief Computes |Y_l^m(theta, phi)|^2 for a stationary hydrogen-like state.
      */
-    static float sphericalHarmonic(int l, int m, float theta, float phi);
+    static float sphericalHarmonicProbability(int l, int m, float theta);
 };

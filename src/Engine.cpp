@@ -34,38 +34,39 @@ Engine::~Engine() {
         glDeleteBuffers(1, &m_posVbo);
     if (m_normVbo)
         glDeleteBuffers(1, &m_normVbo);
-    if (m_speedVbo)
-        glDeleteBuffers(1, &m_speedVbo);
     if (m_shaderProgram)
         glDeleteProgram(m_shaderProgram);
     if (window) glfwDestroyWindow(window);
     glfwTerminate();
 }
 
-// Legacy CPU-side heatmap lookup (kept for historical reference/debugging)
-glm::vec4 Engine::heatmapFire(float value) {
+// CPU-side Inferno heatmap lookup (kept for historical reference/debugging)
+glm::vec4 Engine::heatmapInferno(float value) {
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
-    float t = powf(clamp_v, 0.35f);
+    float t = powf(clamp_v, 0.34f);
 
-    const int num_stops = 7;
+    const int num_stops = 10;
     static const glm::vec3 stops[num_stops] = {
-        {0.280f, 0.000f, 0.550f},
-        {0.450f, 0.000f, 0.650f},
-        {0.800f, 0.000f, 0.550f},
-        {0.950f, 0.050f, 0.050f},
-        {1.000f, 0.500f, 0.000f},
-        {1.000f, 0.900f, 0.000f},
-        {1.000f, 1.000f, 0.850f}
+        {0.045f, 0.015f, 0.130f},
+        {0.130f, 0.035f, 0.300f},
+        {0.300f, 0.055f, 0.500f},
+        {0.540f, 0.090f, 0.560f},
+        {0.790f, 0.160f, 0.430f},
+        {0.940f, 0.290f, 0.220f},
+        {0.990f, 0.500f, 0.070f},
+        {0.990f, 0.700f, 0.100f},
+        {0.980f, 0.860f, 0.320f},
+        {1.000f, 0.970f, 0.620f}
     };
 
     float scaled_v = t * (num_stops - 1);
-    int i = static_cast<int>(scaled_v);
+    int i = std::min(static_cast<int>(scaled_v), num_stops - 2);
     int next_i = std::min(i + 1, num_stops - 1);
     float local_t = scaled_v - static_cast<float>(i);
 
     glm::vec3 color = mix(stops[i], stops[next_i], local_t);
-    float alpha = powf(t, 0.60f) * 0.95f;
-    if (t < 0.03f) alpha *= (t / 0.03f);
+    float alpha = 0.10f + powf(t, 0.68f) * 0.58f;
+    if (t < 0.015f) alpha *= (t / 0.015f);
 
     return {glm::vec4(color, alpha)};
 }
@@ -87,28 +88,30 @@ void Engine::regenerateCloud() {
         std::mt19937 gen(std::random_device{}());
         std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 
-        const float a0 = 4.0f;
         const float maxR = 6.0f * static_cast<float>(capturedState.n * capturedState.n) * 1.5f;
-        const float peakR = static_cast<float>(capturedState.n * capturedState.n) * a0;
 
-        // Estimate maximum probability density for the current state to normalize sampling
-        float maxTestDensity = 0.0f;
-        for (int i = 0; i < 3000 && !m_buildCancelled.load(); ++i) {
-            float testR = (i < 1500)
-                              ? peakR * (0.5f + dis(gen) * 1.5f)
-                              : dis(gen) * maxR;
-            float testTh = acosf(2.0f * dis(gen) - 1.0f);
-            float testPh = 2.0f * PI * dis(gen);
-            maxTestDensity = std::max(maxTestDensity,
-                                      QuantumSimulation::computeProbability(testR, testTh, testPh, capturedState));
+        // Bound the same radial sampling weight used by the accept/reject test:
+        // |psi|^2 r^2. Theta is sampled uniformly in cos(theta), so sin(theta)
+        // is already represented by the proposal distribution.
+        float maxSamplingWeight = 0.0f;
+        constexpr int radialSamples = 360;
+        constexpr int thetaSamples = 240;
+        for (int i = 0; i < radialSamples && !m_buildCancelled.load(); ++i) {
+            float testR = maxR * (static_cast<float>(i) + 0.5f) / static_cast<float>(radialSamples);
+            for (int j = 0; j < thetaSamples; ++j) {
+                float cosTheta = -1.0f + 2.0f * (static_cast<float>(j) + 0.5f) /
+                                           static_cast<float>(thetaSamples);
+                float testTh = acosf(std::clamp(cosTheta, -1.0f, 1.0f));
+                float density = QuantumSimulation::computeProbability(testR, testTh, 0.0f, capturedState);
+                maxSamplingWeight = std::max(maxSamplingWeight, density * testR * testR);
+            }
         }
-        if (maxTestDensity <= 1e-7f) maxTestDensity = 1.0f;
-        maxTestDensity *= 1.15f;
+        maxSamplingWeight = std::max(maxSamplingWeight * 1.50f, 1e-20f);
 
         std::vector<CloudPoint> newCloud;
         newCloud.reserve(targetPoints);
 
-        int maxAttempts = targetPoints * 25;
+        int maxAttempts = targetPoints * 80;
         int attempts = 0;
 
         // Monte Carlo rejection sampling loop
@@ -121,16 +124,15 @@ void Engine::regenerateCloud() {
             float phi = 2.0f * PI * dis(gen);
 
             float density = QuantumSimulation::computeProbability(r, theta, phi, capturedState);
-            float adjustedDensity = density * r * r;
+            float samplingWeight = density * r * r;
 
-            if (dis(gen) * (maxTestDensity * maxR * maxR) < adjustedDensity) {
+            if (dis(gen) * maxSamplingWeight < samplingWeight) {
                 glm::vec3 pos(
                     r * sinf(theta) * cosf(phi),
                     r * cosf(theta),
                     r * sinf(theta) * sinf(phi)
                 );
-                float spd = 0.3f + (dis(gen) * 2.2f);
-                newCloud.push_back({pos, glm::vec3(0.0f), density, spd});
+                newCloud.push_back({pos, glm::vec3(0.0f), density});
 
                 if ((newCloud.size() & 0xFF) == 0)
                     m_buildProgress.store(static_cast<int>(newCloud.size() * 100 / targetPoints));
@@ -138,10 +140,6 @@ void Engine::regenerateCloud() {
         }
 
         if (m_buildCancelled.load()) return;
-
-        // Pad the vector if we didn't reach the target number of points
-        while (static_cast<int>(newCloud.size()) < targetPoints)
-            newCloud.push_back({{0, 0, 0}, {0, 0, 0}, 0.0f, 1.0f});
 
         float maxD = 1e-6f;
         for (const auto &p: newCloud)
@@ -228,23 +226,20 @@ void Engine::initShaders() {
 #version 120
 attribute vec3  aPos;
 attribute float aNorm;
-attribute float aSpeed;
 
 uniform float uTime;
-uniform float uGlobalSpeed;
 uniform float uMFloat;
-uniform int   uUseRotation;
-uniform float uPointScale;
 uniform int   uClipEnabled;
 
 varying float vNorm;
 varying float vDiscard;
 
 void main() {
-    vec3 pos = aPos;
+    vec3 rawPos = aPos;
+    vec3 pos = rawPos;
 
-    if (uUseRotation == 1) {
-        float angle = uTime * uGlobalSpeed * (0.15 + aNorm * 3.5) * uMFloat;
+    if (abs(uMFloat) > 0.001) {
+        float angle = uTime * 0.45 * uMFloat;
         float s = sin(angle);
         float c = cos(angle);
         float newX = pos.x * c - pos.z * s;
@@ -256,18 +251,21 @@ void main() {
     vDiscard = (uClipEnabled == 1 && pos.x > 0.0 && pos.y > 0.0 && pos.z > 0.0) ? 1.0 : 0.0;
     vNorm    = aNorm;
 
-    float t  = pow(aNorm, 0.35);
-    float s6 = t * 6.0;
-    int   ci = int(s6);
-    float lt = s6 - float(ci);
+    float t  = pow(clamp(aNorm, 0.0, 1.0), 0.34);
+    float s9 = t * 9.0;
+    int   ci = int(min(s9, 8.0));
+    float lt = s9 - float(ci);
 
-    vec3 c0 = vec3(0.280, 0.000, 0.550);
-    vec3 c1 = vec3(0.450, 0.000, 0.650);
-    vec3 c2 = vec3(0.800, 0.000, 0.550);
-    vec3 c3 = vec3(0.950, 0.050, 0.050);
-    vec3 c4 = vec3(1.000, 0.500, 0.000);
-    vec3 c5 = vec3(1.000, 0.900, 0.000);
-    vec3 c6 = vec3(1.000, 1.000, 0.850);
+    vec3 c0 = vec3(0.045, 0.015, 0.130);
+    vec3 c1 = vec3(0.130, 0.035, 0.300);
+    vec3 c2 = vec3(0.300, 0.055, 0.500);
+    vec3 c3 = vec3(0.540, 0.090, 0.560);
+    vec3 c4 = vec3(0.790, 0.160, 0.430);
+    vec3 c5 = vec3(0.940, 0.290, 0.220);
+    vec3 c6 = vec3(0.990, 0.500, 0.070);
+    vec3 c7 = vec3(0.990, 0.700, 0.100);
+    vec3 c8 = vec3(0.980, 0.860, 0.320);
+    vec3 c9 = vec3(1.000, 0.970, 0.620);
 
     vec3 col;
     if      (ci == 0) col = mix(c0, c1, lt);
@@ -275,13 +273,25 @@ void main() {
     else if (ci == 2) col = mix(c2, c3, lt);
     else if (ci == 3) col = mix(c3, c4, lt);
     else if (ci == 4) col = mix(c4, c5, lt);
-    else              col = mix(c5, c6, lt);
+    else if (ci == 5) col = mix(c5, c6, lt);
+    else if (ci == 6) col = mix(c6, c7, lt);
+    else if (ci == 7) col = mix(c7, c8, lt);
+    else              col = mix(c8, c9, lt);
 
-    float alpha = pow(t, 0.60) * 0.95;
-    if (t < 0.03) alpha *= (t / 0.03);
+    float phaseMotion = 1.0;
+    if (abs(uMFloat) > 0.001) {
+        float phase = atan(rawPos.z, rawPos.x);
+        float phaseSpeed = 0.65 + 0.30 * abs(uMFloat);
+        phaseMotion = 0.82 + 0.18 * sin(phase * abs(uMFloat) - uTime * phaseSpeed * sign(uMFloat));
+    }
+
+    float alpha = 0.10 + pow(t, 0.68) * 0.58;
+    if (t < 0.015) alpha *= (t / 0.015);
+    alpha *= phaseMotion;
+    col *= 0.92 + 0.08 * phaseMotion;
 
     gl_FrontColor = vec4(col, alpha);
-    gl_PointSize  = 14.0 * uPointScale;
+    gl_PointSize  = 14.0;
     gl_Position   = gl_ModelViewProjectionMatrix * vec4(pos, 1.0);
 }
 )GLSL";
@@ -326,12 +336,8 @@ void main() {
 
     m_attrPos = glGetAttribLocation(m_shaderProgram, "aPos");
     m_attrNorm = glGetAttribLocation(m_shaderProgram, "aNorm");
-    m_attrSpeed = glGetAttribLocation(m_shaderProgram, "aSpeed");
     m_uTime = glGetUniformLocation(m_shaderProgram, "uTime");
-    m_uGlobalSpeed = glGetUniformLocation(m_shaderProgram, "uGlobalSpeed");
     m_uMFloat = glGetUniformLocation(m_shaderProgram, "uMFloat");
-    m_uUseRotation = glGetUniformLocation(m_shaderProgram, "uUseRotation");
-    m_uPointScale = glGetUniformLocation(m_shaderProgram, "uPointScale");
     m_uClipEnabled = glGetUniformLocation(m_shaderProgram, "uClipEnabled");
 }
 
@@ -391,7 +397,7 @@ void Engine::renderUI() {
 
     bool stateChanged = false;
 
-    ImGui::SliderInt("Principle (n)", &state.n, 1, 6);
+    ImGui::SliderInt("Principal (n)", &state.n, 1, 6);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         stateChanged = true;
         if (state.l >= state.n) state.l = state.n - 1;
@@ -408,7 +414,7 @@ void Engine::renderUI() {
 
     ImGui::SliderInt("Magnetic (m)", &state.m, -state.l, state.l);
     if (ImGui::IsItemDeactivatedAfterEdit()) stateChanged = true;
-    ImGui::TextDisabled("Defines spatial orientation axes constraints.");
+    ImGui::TextDisabled("Sets angular momentum projection; |m| controls phase motion speed.");
 
     ImGui::Spacing();
     ImGui::Checkbox("Enable Cross-Section Clip", &clipEnabled);
@@ -656,6 +662,7 @@ void Engine::drawAxes() {
 
 // Uploads cloud data to GPU and renders points using the custom shader
 void Engine::drawCloud(float timeVal) {
+    (void) timeVal;
     if (cloudPoints.empty()) return;
 
     if (m_vboDirty) {
@@ -667,7 +674,6 @@ void Engine::drawCloud(float timeVal) {
 
         std::vector<float> positions(n * 3);
         std::vector<float> norms(n);
-        std::vector<float> speeds(n);
 
         for (size_t i = 0; i < n; ++i) {
             const auto &p = cloudPoints[i];
@@ -675,15 +681,12 @@ void Engine::drawCloud(float timeVal) {
             positions[i * 3 + 1] = p.pos.y;
             positions[i * 3 + 2] = p.pos.z;
             norms[i] = p.brightness * invMax;
-            speeds[i] = p.speedFactor;
         }
 
         if (!m_posVbo)
             glGenBuffers(1, &m_posVbo);
         if (!m_normVbo)
             glGenBuffers(1, &m_normVbo);
-        if (!m_speedVbo)
-            glGenBuffers(1, &m_speedVbo);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(positions.size() * sizeof(float)), positions.data(),
@@ -693,10 +696,6 @@ void Engine::drawCloud(float timeVal) {
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(norms.size() * sizeof(float)), norms.data(),
                      GL_STATIC_DRAW);
 
-        glBindBuffer(GL_ARRAY_BUFFER, m_speedVbo);
-        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(speeds.size() * sizeof(float)), speeds.data(),
-                     GL_STATIC_DRAW);
-
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         m_vboDirty = false;
     }
@@ -704,17 +703,13 @@ void Engine::drawCloud(float timeVal) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
+    glDepthMask(GL_FALSE);
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 
     glUseProgram(m_shaderProgram);
 
-    float pointScale = std::clamp(380.0f / camera.distance, 0.7f, 5.0f);
     glUniform1f(m_uTime, timeVal);
-    glUniform1f(m_uGlobalSpeed, 5.0f / static_cast<float>(state.n));
     glUniform1f(m_uMFloat, static_cast<float>(state.m));
-    glUniform1i(m_uUseRotation, (state.m != 0) ? 1 : 0);
-    glUniform1f(m_uPointScale, pointScale);
     glUniform1i(m_uClipEnabled, clipEnabled ? 1 : 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
@@ -725,18 +720,14 @@ void Engine::drawCloud(float timeVal) {
     glEnableVertexAttribArray(m_attrNorm);
     glVertexAttribPointer(m_attrNorm, 1, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-    glBindBuffer(GL_ARRAY_BUFFER, m_speedVbo);
-    glEnableVertexAttribArray(m_attrSpeed);
-    glVertexAttribPointer(m_attrSpeed, 1, GL_FLOAT, GL_FALSE, 0, nullptr);
-
     glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(cloudPoints.size()));
 
     glDisableVertexAttribArray(m_attrPos);
     glDisableVertexAttribArray(m_attrNorm);
-    glDisableVertexAttribArray(m_attrSpeed);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glUseProgram(0);
+    glDepthMask(GL_TRUE);
 }
 
 // Renders a single white point to represent a classically tracked electron

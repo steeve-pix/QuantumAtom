@@ -27,7 +27,6 @@ private:
     ///@{
     GLuint m_posVbo = 0;    /**< VBO for point positions */
     GLuint m_normVbo = 0;   /**< VBO for normalized probability values */
-    GLuint m_speedVbo = 0;  /**< VBO for individual rotation speed factors */
     bool m_vboDirty = true; /**< Flag indicating if GPU buffers need updating */
     ///@}
 
@@ -35,12 +34,8 @@ private:
     ///@{
     GLint m_attrPos = -1;
     GLint m_attrNorm = -1;
-    GLint m_attrSpeed = -1;
     GLint m_uTime = -1;
-    GLint m_uGlobalSpeed = -1;
     GLint m_uMFloat = -1;
-    GLint m_uUseRotation = -1;
-    GLint m_uPointScale = -1;
     GLint m_uClipEnabled = -1;
     ///@}
 
@@ -80,7 +75,7 @@ private:
 
     /** @name Initialization Helpers */
     ///@{
-    static glm::vec4 heatmapFire(float value);
+    static glm::vec4 heatmapInferno(float value);
     void initGlfwWindow();
     void initOpenGL();
     void initImGui();

@@ -1,5 +1,6 @@
 #include "math/QuantumSimulation.h"
 #include <algorithm>
+#include <cmath>
 
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -7,12 +8,13 @@
 
 // Computes the Associated Legendre Polynomials for the angular component of the wavefunction
 float QuantumSimulation::associatedLegendre(int l, int m, float x) {
+    x = std::clamp(x, -1.0f, 1.0f);
     int absM = std::abs(m);
     if (absM > l) return 0.0f;
 
     float pmm = 1.0f;
     if (absM > 0) {
-        float somx2 = sqrtf((1.0f - x) * (1.0f + x));
+        float somx2 = sqrtf(std::max(0.0f, (1.0f - x) * (1.0f + x)));
         float fact = 1.0f;
         for (int i = 1; i <= absM; i++) {
             pmm *= -fact * somx2;
@@ -54,9 +56,9 @@ float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
     return L2;
 }
 
-// Computes the spherical harmonic component, defining the 3D shape of the orbital
-float QuantumSimulation::sphericalHarmonic(int l, int m, float theta, float phi) {
-    int absM = abs(m);
+// Computes the angular probability density of the complex spherical harmonic.
+float QuantumSimulation::sphericalHarmonicProbability(int l, int m, float theta) {
+    int absM = std::abs(m);
     float Plm = associatedLegendre(l, absM, cosf(theta));
 
     // Factorial normalization using log-gamma for numerical stability
@@ -64,20 +66,18 @@ float QuantumSimulation::sphericalHarmonic(int l, int m, float theta, float phi)
     float logDenFact = lgammaf(static_cast<float>(l + absM + 1));
 
     float logNormSq = logf(2.0f * static_cast<float>(l) + 1.0f) - logf(4.0f * PI) + logNumFact - logDenFact;
-    float norm = expf(0.5f * logNormSq);
+    float normSq = expf(logNormSq);
 
-    // Real-valued spherical harmonics for visualization
-    if (m > 0) {
-        return sqrtf(2.0f) * norm * Plm * cosf(static_cast<float>(m) * phi);
-    } else if (m < 0) {
-        return sqrtf(2.0f) * norm * Plm * sinf(static_cast<float>(absM) * phi);
-    }
-
-    return norm * Plm;
+    return normSq * Plm * Plm;
 }
 
 // Entry point for probability density calculations based on quantum numbers
 float QuantumSimulation::computeProbability(float r, float theta, float phi, const QuantumState &state) {
+    if (!state.isValid() || r < 0.0f ||
+        !std::isfinite(r) || !std::isfinite(theta) || !std::isfinite(phi)) {
+        return 0.0f;
+    }
+
     float a0 = 4.0f; // Scaled Bohr radius
     auto n_f = static_cast<float>(state.n);
     float rho = (2.0f * r) / (static_cast<float>(state.n) * a0);
@@ -97,10 +97,8 @@ float QuantumSimulation::computeProbability(float r, float theta, float phi, con
     float radial = radNorm * expf(-rho / 2.0f) * powf(rho, static_cast<float>(state.l)) *
                    associatedLaguerre(k, alpha, rho);
 
-    // Calculate angular part of the wavefunction
-    float angular = sphericalHarmonic(state.l, state.m, theta, phi);
+    float radialProbability = radial * radial;
+    float angularProbability = sphericalHarmonicProbability(state.l, state.m, theta);
 
-    // Total wavefunction (psi) and its square (probability density)
-    float psi = radial * angular;
-    return psi * psi;
+    return radialProbability * angularProbability;
 }
