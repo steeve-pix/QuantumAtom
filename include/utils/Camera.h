@@ -42,4 +42,14 @@ public:
      * @return 4x4 view transformation matrix
      */
     glm::mat4 getViewMatrix() const;
+
+    /**
+     * @brief Computes the projection matrix for the current viewport.
+     */
+    glm::mat4 getProjectionMatrix(int width, int height) const;
+
+    /**
+     * @brief Computes projection * view for shader upload.
+     */
+    glm::mat4 getViewProjectionMatrix(int width, int height) const;
 };

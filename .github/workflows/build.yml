@@ -1,0 +1,91 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            system: windows-x64
+          - name: Linux x64
+            os: ubuntu-latest
+            system: linux-x64
+          - name: macOS arm64
+            os: macos-latest
+            system: macos-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config xorg-dev libglu1-mesa-dev
+
+      - name: Install macOS packages
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DQUANTUMATOM_MAX_N=8
+          -DQUANTUMATOM_DEFAULT_POINTS=120000
+          -DQUANTUMATOM_WITH_DEBUG_SYMBOLS=ON
+          -DCPACK_SYSTEM_NAME=${{ matrix.system }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Install staging tree
+        run: cmake --install build --config Release --prefix dist/QuantumAtom
+
+      - name: Package
+        working-directory: build
+        run: cpack -C Release
+
+      - name: Upload staged app
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuantumAtom-${{ matrix.system }}-staging
+          path: dist/QuantumAtom
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuantumAtom-${{ matrix.system }}-packages
+          path: |
+            build/QuantumAtom-*.zip
+            build/QuantumAtom-*.tar.gz
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            build/QuantumAtom-*.zip
+            build/QuantumAtom-*.tar.gz

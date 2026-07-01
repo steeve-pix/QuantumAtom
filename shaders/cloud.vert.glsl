@@ -1,41 +1,40 @@
-#version 120
+#version 330 core
 
-attribute vec3  aPos;
-attribute float aNorm;
-attribute float aOmega;
+// Render mode values:
+// 0 = density points, 1 = glow billboards, 2 = iso shell,
+// 3 = phase flow, 4 = halo fog.
+//
+// Clip mode values:
+// 0 = adjustable +X plane, 1 = positive XY quadrant, 2 = positive XYZ octant.
 
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in float aNorm;
+layout(location = 2) in float aOmega;
+
+uniform mat4 uViewProjection;
 uniform float uTime;
 uniform float uMFloat;
 uniform float uColorIntensity;
-uniform int   uClipEnabled;
+uniform int uClipEnabled;
+uniform float uClipPlane;
+uniform int uClipMode;
+uniform float uPointSize;
+uniform float uAnimationSpeed;
+uniform int uRenderMode;
 
-varying float vNorm;
-varying float vDiscard;
-
-vec3 infernoColor(float x) {
-    vec3 c0 = vec3(0.015, 0.000, 0.060);
-    vec3 c1 = vec3(0.260, 0.020, 0.520);
-    vec3 c2 = vec3(0.640, 0.030, 0.360);
-    vec3 c3 = vec3(0.940, 0.210, 0.080);
-    vec3 c4 = vec3(1.000, 0.600, 0.050);
-    vec3 c5 = vec3(1.000, 0.900, 0.420);
-
-    float scaled = clamp(x, 0.0, 1.0) * 5.0;
-    int band = int(min(scaled, 4.0));
-    float localT = scaled - float(band);
-
-    if      (band == 0) return mix(c0, c1, localT);
-    else if (band == 1) return mix(c1, c2, localT);
-    else if (band == 2) return mix(c2, c3, localT);
-    else if (band == 3) return mix(c3, c4, localT);
-    return mix(c4, c5, localT);
-}
+out float vNorm;
+out float vDiscard;
+out float vHeat;
+out float vPhase;
 
 void main() {
     vec3 pos = aPos;
+    float mAbs = abs(uMFloat);
 
-    if (abs(uMFloat) > 0.001) {
-        float speed = aOmega * abs(uMFloat);
+    // Phase-flow mode rotates samples around the polar axis. This is not a full
+    // time-dependent Schrodinger solve; it is a readable visual cue for m.
+    if (mAbs > 0.001 && uAnimationSpeed > 0.001) {
+        float speed = aOmega * mAbs * uAnimationSpeed;
         float angle = uTime * speed * sign(uMFloat);
         float s = sin(angle);
         float c = cos(angle);
@@ -43,16 +42,32 @@ void main() {
                       pos.x * s + pos.z * c);
     }
 
+    // aNorm is CPU-normalized density. vHeat applies a perceptual curve so dim
+    // outer lobes remain visible without blowing out the dense core.
     vNorm = clamp(aNorm, 0.0, 1.0);
-    vDiscard = (uClipEnabled == 1 && pos.x > 0.0 && pos.y > 0.0 && pos.z > 0.0) ? 1.0 : 0.0;
+    vHeat = clamp(pow(vNorm, 0.45) * clamp(uColorIntensity, 0.1, 10.0) * 0.82, 0.0, 1.0);
+    vPhase = sin(uTime * uAnimationSpeed * (0.6 + aOmega * 3.5) + length(aPos) * 0.045 + uMFloat);
+    bool clipped = false;
+    if (uClipEnabled == 1) {
+        if (uClipMode == 0) {
+            clipped = pos.x > uClipPlane;
+        } else if (uClipMode == 1) {
+            clipped = pos.x > 0.0 && pos.y > 0.0;
+        } else {
+            clipped = pos.x > 0.0 && pos.y > 0.0 && pos.z > 0.0;
+        }
+    }
+    vDiscard = clipped ? 1.0 : 0.0;
 
-    float contrast = clamp(uColorIntensity, 0.2, 3.0);
-    float heat = clamp(pow(vNorm, 0.45) * contrast * 0.82, 0.0, 1.0);
-    vec3 color = infernoColor(heat);
-    float alpha = 0.10 + pow(heat, 0.75) * 0.62;
-    if (heat < 0.025) alpha *= heat / 0.025;
+    // Point size is scaled per render mode. The fragment shader still masks the
+    // sprite into a circle, so larger modes become soft billboards rather than
+    // square OpenGL points.
+    float modeScale = 1.0;
+    if (uRenderMode == 1) modeScale = 1.45;
+    if (uRenderMode == 2) modeScale = 0.82;
+    if (uRenderMode == 3) modeScale = 1.22 + 0.18 * vPhase;
+    if (uRenderMode == 4) modeScale = 2.35;
 
-    gl_FrontColor = vec4(color, alpha);
-    gl_PointSize = 18.0;
-    gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 1.0);
+    gl_PointSize = max(1.0, uPointSize * modeScale);
+    gl_Position = uViewProjection * vec4(pos, 1.0);
 }

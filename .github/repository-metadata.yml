@@ -1,0 +1,13 @@
+description: "Real-time C++23/OpenGL visualizer for hydrogen-like atomic orbitals."
+topics:
+  - cpp23
+  - opengl
+  - glfw
+  - imgui
+  - glm
+  - cmake
+  - scientific-visualization
+  - quantum-mechanics
+  - hydrogen-atom
+  - atomic-orbitals
+  - wavefunction

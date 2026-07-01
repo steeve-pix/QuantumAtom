@@ -6,12 +6,15 @@
 #define PI 3.14159265358979323846f
 #endif
 
-// Computes the Associated Legendre Polynomials for the angular component of the wavefunction
+// Computes P_l^m(x), the associated Legendre polynomial used by the angular
+// part of the spherical harmonic. The iterative recurrence avoids recursion and
+// keeps the cost predictable for the higher l values available at n=8.
 float QuantumSimulation::associatedLegendre(int l, int m, float x) {
     x = std::clamp(x, -1.0f, 1.0f);
     int absM = std::abs(m);
     if (absM > l) return 0.0f;
 
+    // Start with P_m^m. The sqrt term is sin(theta) when x = cos(theta).
     float pmm = 1.0f;
     if (absM > 0) {
         float somx2 = sqrtf(std::max(0.0f, (1.0f - x) * (1.0f + x)));
@@ -23,6 +26,7 @@ float QuantumSimulation::associatedLegendre(int l, int m, float x) {
     }
     if (l == absM) return pmm;
 
+    // Bootstrap P_{m+1}^m, then climb to P_l^m with the standard recurrence.
     float pmmp1 = x * (2.0f * static_cast<float>(absM) + 1.0f) * pmm;
     if (l == absM + 1) return pmmp1;
 
@@ -37,7 +41,9 @@ float QuantumSimulation::associatedLegendre(int l, int m, float x) {
     return pmmp1;
 }
 
-// Computes the Associated Laguerre Polynomials for the radial component of the wavefunction
+// Computes L_k^alpha(x), the associated Laguerre polynomial in the radial
+// hydrogen wavefunction. k = n-l-1 grows with n, so this is deliberately
+// iterative and allocation-free.
 float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
     auto f_alpha = static_cast<float>(alpha);
     if (k == 0) return 1.0f;
@@ -56,12 +62,14 @@ float QuantumSimulation::associatedLaguerre(int k, int alpha, float x) {
     return L2;
 }
 
-// Computes the angular probability density of the complex spherical harmonic.
+// Computes |Y_l^m(theta, phi)|^2. The complex phase term exp(i*m*phi) has unit
+// magnitude, so phi is not needed for probability density.
 float QuantumSimulation::sphericalHarmonicProbability(int l, int m, float theta) {
     int absM = std::abs(m);
     float Plm = associatedLegendre(l, absM, cosf(theta));
 
-    // Factorial normalization using log-gamma for numerical stability
+    // Factorial normalization uses log-gamma so l=7 at n=8 does not overflow
+    // intermediate factorial terms.
     float logNumFact = lgammaf(static_cast<float>(l - absM + 1));
     float logDenFact = lgammaf(static_cast<float>(l + absM + 1));
 
@@ -71,21 +79,26 @@ float QuantumSimulation::sphericalHarmonicProbability(int l, int m, float theta)
     return normSq * Plm * Plm;
 }
 
-// Entry point for probability density calculations based on quantum numbers
+// Entry point for probability density calculations based on quantum numbers.
+// Returns |R_nl(r) * Y_l^m(theta, phi)|^2 in scaled visualization units.
 float QuantumSimulation::computeProbability(float r, float theta, float phi, const QuantumState &state) {
     if (!state.isValid() || r < 0.0f ||
         !std::isfinite(r) || !std::isfinite(theta) || !std::isfinite(phi)) {
         return 0.0f;
     }
 
-    float a0 = 4.0f; // Scaled Bohr radius
+    // The Bohr radius is scaled up from physical units so orbitals occupy a
+    // visually useful range in the OpenGL scene.
+    float a0 = 4.0f;
     auto n_f = static_cast<float>(state.n);
     float rho = (2.0f * r) / (static_cast<float>(state.n) * a0);
 
+    // Hydrogen radial terms use L_{n-l-1}^{2l+1}(rho).
     int k = state.n - state.l - 1;
     int alpha = 2 * state.l + 1;
 
-    // Normalize the radial component
+    // Normalize the radial component in log space to avoid overflow/underflow
+    // from factorial ratios.
     float logCubeScale = 3.0f * logf(2.0f / (n_f * a0));
     float logTopFact = lgammaf(static_cast<float>(state.n - state.l));
     float logBottomFact = lgammaf(static_cast<float>(state.n + state.l + 1));
@@ -93,7 +106,7 @@ float QuantumSimulation::computeProbability(float r, float theta, float phi, con
     float logRadNormSq = logCubeScale - logf(2.0f * n_f) + logTopFact - logBottomFact;
     float radNorm = expf(0.5f * logRadNormSq);
 
-    // Calculate radial part of the wavefunction
+    // R_nl(r) = N * exp(-rho/2) * rho^l * L_k^alpha(rho).
     float radial = radNorm * expf(-rho / 2.0f) * powf(rho, static_cast<float>(state.l)) *
                    associatedLaguerre(k, alpha, rho);
 
