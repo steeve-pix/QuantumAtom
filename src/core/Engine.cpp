@@ -6,10 +6,35 @@
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
+#include <array>
+#include <fstream>
+#include <sstream>
 
 #ifndef PI
 #define PI 3.141592653589793238462643383279502884f
 #endif
+
+namespace {
+    std::string loadShaderSource(const std::string &fileName) {
+        const std::string shaderPath = "shaders/" + fileName;
+        const std::array<std::string, 3> candidates = {
+            shaderPath,
+            "../" + shaderPath,
+            "../../" + shaderPath
+        };
+
+        for (const auto &path: candidates) {
+            std::ifstream file(path, std::ios::in);
+            if (file) {
+                std::ostringstream buffer;
+                buffer << file.rdbuf();
+                return buffer.str();
+            }
+        }
+
+        throw std::runtime_error("Unable to load shader file: " + shaderPath);
+    }
+}
 
 // Constructor: Initializes window, OpenGL, ImGui, and starts the initial cloud generation
 Engine::Engine(int width, int height, const std::string &title)
@@ -98,7 +123,7 @@ void Engine::regenerateCloud() {
             float testR = maxR * (static_cast<float>(i) + 0.5f) / static_cast<float>(radialSamples);
             for (int j = 0; j < thetaSamples; ++j) {
                 float cosTheta = -1.0f + 2.0f * (static_cast<float>(j) + 0.5f) /
-                                           static_cast<float>(thetaSamples);
+                                 static_cast<float>(thetaSamples);
                 float testTh = acosf(std::clamp(cosTheta, -1.0f, 1.0f));
                 float density = QuantumSimulation::computeProbability(testR, testTh, 0.0f, capturedState);
                 maxSamplingWeight = std::max(maxSamplingWeight, density * testR * testR);
@@ -184,8 +209,8 @@ void Engine::regenerateSinglePoint(CloudPoint &p) {
         float threshold = m_dis(m_gen) * maxTargetProb;
         if (prob > threshold) {
             p.pos = glm::vec3(r * sinf(theta) * cosf(phi),
-                         r * sinf(theta) * sinf(phi),
-                         r * cosf(theta));
+                              r * sinf(theta) * sinf(phi),
+                              r * cosf(theta));
             p.vel = glm::vec3(0.0f);
             p.brightness = prob;
             p.omega = 0.35f;
@@ -221,83 +246,8 @@ GLuint Engine::compileShader(GLenum type, const std::string &source) {
 
 // Compiles and links the GLSL program used for point cloud rendering
 void Engine::initShaders() {
-    // Vertex shader source: handles rotation and heatmap coloring
-    const std::string vertSrc = R"GLSL(
-#version 120
-attribute vec3  aPos;
-attribute float aNorm;
-attribute float aOmega;
-
-uniform float uTime;
-uniform float uMFloat;
-uniform float uColorIntensity;
-uniform int   uClipEnabled;
-
-varying float vNorm;
-varying float vDiscard;
-
-void main() {
-    vec3 pos = aPos;
-
-    if (abs(uMFloat) > 0.001) {
-        float angle = uTime * aOmega * uMFloat;
-        float s = sin(angle);
-        float c = cos(angle);
-        float newX = pos.x * c - pos.z * s;
-        float newZ = pos.x * s + pos.z * c;
-        pos.x = newX;
-        pos.z = newZ;
-    }
-
-    vDiscard = (uClipEnabled == 1 && pos.x > 0.0 && pos.y > 0.0 && pos.z > 0.0) ? 1.0 : 0.0;
-    vNorm    = aNorm;
-
-    float t  = clamp(pow(clamp(aNorm, 0.0, 1.0), 0.50) * uColorIntensity, 0.0, 1.0);
-    float s5 = t * 5.0;
-    int   ci = int(min(s5, 4.0));
-    float lt = s5 - float(ci);
-
-    vec3 c0 = vec3(0.015, 0.000, 0.060);
-    vec3 c1 = vec3(0.300, 0.000, 0.650);
-    vec3 c2 = vec3(0.800, 0.000, 0.120);
-    vec3 c3 = vec3(1.000, 0.420, 0.000);
-    vec3 c4 = vec3(1.000, 0.900, 0.000);
-    vec3 c5 = vec3(1.000, 1.000, 0.780);
-
-    vec3 col;
-    if      (ci == 0) col = mix(c0, c1, lt);
-    else if (ci == 1) col = mix(c1, c2, lt);
-    else if (ci == 2) col = mix(c2, c3, lt);
-    else if (ci == 3) col = mix(c3, c4, lt);
-    else              col = mix(c4, c5, lt);
-
-    float alpha = 0.12 + pow(t, 0.80) * 0.58;
-    if (t < 0.02) alpha *= (t / 0.02);
-
-    gl_FrontColor = vec4(col, alpha);
-    gl_PointSize  = 15.0;
-    gl_Position   = gl_ModelViewProjectionMatrix * vec4(pos, 1.0);
-}
-)GLSL";
-
-    // Fragment shader source: handles point smoothing and clipping discard
-    const std::string fragSrc = R"GLSL(
-#version 120
-varying float vNorm;
-varying float vDiscard;
-
-void main() {
-    if (vDiscard > 0.5) discard;
-    if (vNorm < 0.0001) discard;
-
-    vec2  cc     = gl_PointCoord - vec2(0.5);
-    float distSq = dot(cc, cc);
-    if (distSq > 0.25) discard;
-
-    float a = smoothstep(0.25, 0.0, distSq);
-    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * a);
-}
-)GLSL";
+    const std::string vertSrc = loadShaderSource("cloud.vert.glsl");
+    const std::string fragSrc = loadShaderSource("cloud.frag.glsl");
 
     GLuint vs = compileShader(GL_VERTEX_SHADER, vertSrc);
     GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragSrc);
