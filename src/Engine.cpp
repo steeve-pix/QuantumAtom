@@ -275,7 +275,7 @@ void main() {
     if (t < 0.02) alpha *= (t / 0.02);
 
     gl_FrontColor = vec4(col, alpha);
-    gl_PointSize  = 3.0;
+    gl_PointSize  = 15.0;
     gl_Position   = gl_ModelViewProjectionMatrix * vec4(pos, 1.0);
 }
 )GLSL";
