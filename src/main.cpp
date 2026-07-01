@@ -1,11 +1,16 @@
 #include "core/Engine.h"
+#include "core/AppConfig.h"
+#include "QuantumAtomVersion.h"
 #include <iostream>
 #include <chrono>
+#include <string>
 
 int main() {
     try {
-        // Initialize the visualization engine with a 720p window
-        Engine engine(1280, 720, "QuantumAtom - Hydrogen-like Orbital Visualizer");
+        AppConfig config = AppConfig::loadDefaultLocations();
+        const std::string title = std::string("QuantumAtom ") + QUANTUMATOM_VERSION_STRING +
+                                  " - Hydrogen-like Orbital Visualizer";
+        Engine engine(config.windowWidth, config.windowHeight, title, config);
 
         auto lastTime = std::chrono::high_resolution_clock::now();
 

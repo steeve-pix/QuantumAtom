@@ -1,127 +1,190 @@
 #pragma once
 
-#include <atomic>
-#include <thread>
-#include <mutex>
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-#include <string>
-#include <vector>
-#include <random>
+#include "core/AppConfig.h"
 #include "utils/Camera.h"
 #include "utils/QuantumTypes.h"
 
+#include <atomic>
+#include <deque>
+#include "utils/OpenGLLoader.h"
+#include <GLFW/glfw3.h>
+#include <mutex>
+#include <optional>
+#include <random>
+#include <string>
+#include <thread>
+#include <vector>
+
+// Cache keys deliberately ignore purely visual settings. Color maps, threshold,
+// clipping, and render mode are shader uniforms, so the same cloud can be reused.
+struct CloudCacheKey {
+    QuantumState state;
+    int pointCount = QUANTUMATOM_DEFAULT_POINT_COUNT;
+
+    bool operator==(const CloudCacheKey &other) const {
+        return state == other.state && pointCount == other.pointCount;
+    }
+};
+
+// Cached clouds keep CPU point data plus the density normalization needed when
+// the VBO is rebuilt after a cache hit.
+struct CloudCacheEntry {
+    CloudCacheKey key;
+    std::vector<CloudPoint> points;
+    float maxDensity = 1e-6f;
+};
+
+// UI-facing status for the background cloud generator.
+enum class CloudBuildStage : int {
+    Idle = 0,
+    CacheHit,
+    ScanningDensity,
+    PreviewReady,
+    Refining,
+    Complete
+};
+
 /**
  * @class Engine
- * @brief Orchestrates the application lifecycle, including rendering, simulation, and user interaction.
+ * @brief Orchestrates windowing, simulation, rendering, UI, caching, and exports.
  */
 class Engine {
 private:
-    int m_width;  /**< Window width */
-    int m_height; /**< Window height */
-    std::string m_title; /**< Window title */
+    // Window/config state. m_launchConfig and m_launchState exist so R can
+    // restore exactly the startup state.
+    int m_width;
+    int m_height;
+    std::string m_title;
+    AppConfig m_config;
+    AppConfig m_launchConfig;
+    QuantumState m_launchState;
 
-    GLuint m_shaderProgram = 0; /**< Handle for the compiled GLSL shader program */
+    // OpenGL program and object handles. These are created on the render thread
+    // and destroyed in the Engine destructor.
+    GLuint m_cloudProgram = 0;
+    GLuint m_axesProgram = 0;
 
-    /** @name GPU Buffers */
-    ///@{
-    GLuint m_posVbo = 0;    /**< VBO for point positions */
-    GLuint m_normVbo = 0;   /**< VBO for normalized probability values */
-    GLuint m_omegaVbo = 0;  /**< VBO for per-point angular velocity factors */
-    bool m_vboDirty = true; /**< Flag indicating if GPU buffers need updating */
-    ///@}
+    GLuint m_cloudVao = 0;
+    GLuint m_posVbo = 0;
+    GLuint m_normVbo = 0;
+    GLuint m_omegaVbo = 0;
 
-    /** @name Shader Uniform/Attribute Locations */
-    ///@{
-    GLint m_attrPos = -1;
-    GLint m_attrNorm = -1;
-    GLint m_attrOmega = -1;
-    GLint m_uTime = -1;
-    GLint m_uMFloat = -1;
-    GLint m_uColorIntensity = -1;
-    GLint m_uClipEnabled = -1;
-    ///@}
+    GLuint m_axesVao = 0;
+    GLuint m_axesVbo = 0;
+    GLuint m_activeVao = 0;
+    GLuint m_activeVbo = 0;
 
-    /** @name Multithreading Management */
-    ///@{
-    std::thread m_buildThread;                 /**< Thread for background cloud generation */
-    std::mutex m_swapMutex;                    /**< Protects access to pending cloud data */
-    std::vector<CloudPoint> m_pendingCloud;    /**< Buffer for newly generated cloud points */
-    std::atomic<bool> m_cloudReady{false};     /**< Flag indicating if a pending cloud is ready to swap */
-    std::atomic<bool> m_buildCancelled{false}; /**< Signal to abort the current build thread */
-    std::atomic<int> m_buildProgress{0};       /**< Percentage of generation completion */
-    ///@}
+    GLint m_uCloudViewProjection = -1;
+    GLint m_uCloudTime = -1;
+    GLint m_uCloudM = -1;
+    GLint m_uCloudColorIntensity = -1;
+    GLint m_uCloudClipEnabled = -1;
+    GLint m_uCloudClipPlane = -1;
+    GLint m_uCloudClipMode = -1;
+    GLint m_uCloudDensityThreshold = -1;
+    GLint m_uCloudRenderMode = -1;
+    GLint m_uCloudColorMap = -1;
+    GLint m_uCloudPointSize = -1;
+    GLint m_uCloudAnimationSpeed = -1;
+    GLint m_uCloudIsoLevel = -1;
+    GLint m_uCloudIsoWidth = -1;
+    GLint m_uCloudTint = -1;
+    GLint m_uAxesViewProjection = -1;
+    GLint m_uAxesPointSize = -1;
 
-    float m_cachedMaxDensity = 1e-6f; /**< Maximum probability density for sampling */
+    // CPU cloud data is uploaded lazily when m_vboDirty is true.
+    bool m_vboDirty = true;
+    float m_cachedMaxDensity = 1e-6f;
 
-    /** @name User Input State */
-    ///@{
+    // Background generation handoff. The worker fills m_pendingCloud, then the
+    // render thread swaps it into cloudPoints at the start of drawScene().
+    std::thread m_buildThread;
+    std::mutex m_swapMutex;
+    std::vector<CloudPoint> m_pendingCloud;
+    CloudCacheKey m_pendingKey;
+    float m_pendingMaxDensity = 1e-6f;
+    bool m_pendingIsFinal = false;
+    std::atomic<bool> m_cloudReady{false};
+    std::atomic<bool> m_buildCancelled{false};
+    std::atomic<int> m_buildProgress{0};
+    std::atomic<int> m_buildStage{static_cast<int>(CloudBuildStage::Idle)};
+
+    std::deque<CloudCacheEntry> m_cloudCache;
+    size_t m_cacheLimit = 6;
+
+    // Input/UI telemetry.
     float m_lastMouseX = 600.0f;
     float m_lastMouseY = 500.0f;
     bool m_firstMouse = true;
     int m_mouseButtonDown = -1;
-    ///@}
 
-    /** @name Performance Metrics */
-    ///@{
     float m_fps = 0.0f;
     float m_frameTimeMs = 0.0f;
     double m_lastFpsUpdateTime = 0.0;
     int m_frameCount = 0;
-    ///@}
 
-    /** @name Random Number Generation */
-    ///@{
     std::mt19937 m_gen;
     std::uniform_real_distribution<float> m_dis;
-    ///@}
 
-    /** @name Initialization Helpers */
-    ///@{
-    static glm::vec4 heatmapInferno(float value);
+    bool m_screenshotRequested = false;
+    std::string m_lastScreenshotPath;
+    bool m_showAxes = true;
+    bool m_showElectronTracker = true;
+
+    // Initialization and utility helpers are private so the frame loop remains
+    // small and main.cpp does not need to know OpenGL details.
     void initGlfwWindow();
     void initOpenGL();
     void initImGui();
     void setupCallbacks();
-    ///@}
+    void initStaticGeometry();
+
+    void applyTheme(UiTheme theme);
+    void applyRuntimeConfig(const AppConfig &config);
+    void resetCameraToLaunchPose();
+    void cacheCloud(const CloudCacheEntry &entry);
+    std::optional<CloudCacheEntry> findCachedCloud(const CloudCacheKey &key) const;
+    int previewPointCount(const QuantumState &state, int targetPointCount) const;
+    void requestScreenshot();
+    bool saveScreenshotPng();
 
 public:
-    GLFWwindow *window = nullptr; /**< GLFW window handle */
-    Camera camera;                /**< Main viewing camera */
-    QuantumState state;           /**< Current quantum configuration */
-    std::vector<CloudPoint> cloudPoints; /**< Current active set of points for rendering */
+    // Runtime state that is edited by the UI and read by rendering/simulation.
+    GLFWwindow *window = nullptr;
+    Camera camera;
+    QuantumState state;
+    std::vector<CloudPoint> cloudPoints;
 
-    const int maxPoints = 2.5e5; /**< Total number of points in the probability cloud */
-    bool clipEnabled = false;    /**< Toggle for cross-section clipping */
-    float clipPlaneZ = 30.0f;    /**< Distance of the clipping plane */
-    float colorIntensity = 1.0f; /**< Multiplier for heatmap contrast */
-    float electronAngle = 0.0f;  /**< Current orbital rotation angle for the shell visualization */
-    bool m_isInitialized = false; /**< Initialization status flag */
+    int pointBudget = QUANTUMATOM_DEFAULT_POINT_COUNT;
+    bool clipEnabled = false;
+    float clipPlane = 0.0f;
+    ClipMode clipMode = ClipMode::PositiveXYZ;
+    float colorIntensity = 1.0f;
+    float densityThreshold = 0.0f;
+    float pointSize = 7.0f;
+    float animationSpeed = 1.0f;
+    float isoLevel = 0.36f;
+    float isoWidth = 0.055f;
+    glm::vec3 pointTint = glm::vec3(1.0f);
+    glm::vec3 backgroundColor = glm::vec3(0.035f, 0.04f, 0.055f);
+    RenderMode renderMode = RenderMode::DensityPoints;
+    ColorMap colorMap = ColorMap::Inferno;
+    UiTheme theme = UiTheme::Dark;
+    float electronAngle = 0.0f;
+    bool m_isInitialized = false;
 
-    Engine(int width, int height, const std::string &title);
+    Engine(int width, int height, const std::string &title, AppConfig config = {});
     ~Engine();
 
-    /** @brief Initiates background generation of the probability cloud. */
     void regenerateCloud();
-
-    /** @brief Resets simulation state and camera. */
     void resetSimulation();
-
-    /** @brief Generates a single point based on current probability density. */
     void regenerateSinglePoint(CloudPoint &p);
-
-    /** @brief Updates the logical state for each frame. */
     void updatePhysics(float deltaTime);
 
-    /** @name Rendering Functions */
-    ///@{
-    GLuint compileShader(GLenum type, const std::string &source);
     void initShaders();
     void renderUI();
     void drawScene(float currentFrameTime, float deltaTime);
-    void drawAxes();
-    void drawCloud(float timeVal);
-    void drawActiveElectron();
-    ///@}
+    void drawAxes(const glm::mat4 &viewProjection);
+    void drawCloud(float timeVal, const glm::mat4 &viewProjection);
+    void drawActiveElectron(const glm::mat4 &viewProjection);
 };
-

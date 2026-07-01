@@ -4,15 +4,18 @@
 
 /**
  * @class QuantumSimulation
- * @brief Mathematical engine for calculating electron probability distributions.
+ * @brief Pure mathematical engine for hydrogen-like orbital probability.
+ *
+ * This class owns no OpenGL or UI state. Keeping it pure makes the expensive
+ * density scan easy to run from a background thread.
  */
 class QuantumSimulation {
 public:
     /**
      * @brief Computes the probability density at a point in spherical coordinates.
      * @param r Radial distance from the nucleus
-     * @param theta Polar angle
-     * @param phi Azimuthal angle
+     * @param theta Polar angle measured from the scene's Y axis
+     * @param phi Azimuthal angle around the Y axis
      * @param state Current quantum numbers (n, l, m)
      * @return Probability density value
      */
@@ -20,12 +23,12 @@ public:
 
 private:
     /**
-     * @brief Computes the Associated Legendre polynomial.
+     * @brief Computes the associated Legendre polynomial P_l^m(x).
      */
     static float associatedLegendre(int l, int m, float x);
 
     /**
-     * @brief Computes the Associated Laguerre polynomial.
+     * @brief Computes the associated Laguerre polynomial L_k^alpha(x).
      */
     static float associatedLaguerre(int k, int alpha, float x);
 

@@ -1,6 +1,11 @@
-/src/HowItWorks.cpp
 /external/
 /img/
 /cmake-build-debug/
 /cmake-build-release/
+/build*/
+/out/
+/screenshots/
+/install/
+/*.zip
+/*.tar.gz
 /src/.idea/
