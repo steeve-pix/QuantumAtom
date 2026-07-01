@@ -50,6 +50,12 @@ if(NOT glfw3_FOUND)
     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+    if(UNIX AND NOT APPLE)
+        # GitHub's Ubuntu runners do not always include wayland-scanner. Build
+        # GLFW's X11 backend in CI/fallback builds to keep Linux packages light.
+        set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+    endif()
     FetchContent_MakeAvailable(glfw)
 endif()
 
