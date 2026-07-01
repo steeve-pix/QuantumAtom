@@ -68,7 +68,9 @@ target_link_libraries(QuantumAtom PRIVATE glfw glad glm opengl32)
 # --- Runtime Assets ---
 # Keep shader files beside the executable so runtime loading works from build directories.
 add_custom_command(TARGET QuantumAtom POST_BUILD
+add_custom_target(copy_runtime_assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders
         $<TARGET_FILE_DIR:QuantumAtom>/shaders
 )
+add_dependencies(QuantumAtom copy_runtime_assets)
