@@ -10,6 +10,7 @@ struct CloudPoint {
     glm::vec3 pos;           /**< 3D position of the point */
     glm::vec3 vel;           /**< Velocity vector (reserved for future physics simulations) */
     float brightness;        /**< Probability density value at this location */
+    float omega;             /**< Per-point angular velocity factor for phase-flow visualization */
 };
 
 /**

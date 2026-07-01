@@ -34,6 +34,8 @@ Engine::~Engine() {
         glDeleteBuffers(1, &m_posVbo);
     if (m_normVbo)
         glDeleteBuffers(1, &m_normVbo);
+    if (m_omegaVbo)
+        glDeleteBuffers(1, &m_omegaVbo);
     if (m_shaderProgram)
         glDeleteProgram(m_shaderProgram);
     if (window) glfwDestroyWindow(window);
@@ -43,20 +45,16 @@ Engine::~Engine() {
 // CPU-side Inferno heatmap lookup (kept for historical reference/debugging)
 glm::vec4 Engine::heatmapInferno(float value) {
     float clamp_v = std::clamp(value, 0.0f, 1.0f);
-    float t = powf(clamp_v, 0.34f);
+    float t = powf(clamp_v, 0.50f);
 
-    const int num_stops = 10;
+    const int num_stops = 6;
     static const glm::vec3 stops[num_stops] = {
-        {0.045f, 0.015f, 0.130f},
-        {0.130f, 0.035f, 0.300f},
-        {0.300f, 0.055f, 0.500f},
-        {0.540f, 0.090f, 0.560f},
-        {0.790f, 0.160f, 0.430f},
-        {0.940f, 0.290f, 0.220f},
-        {0.990f, 0.500f, 0.070f},
-        {0.990f, 0.700f, 0.100f},
-        {0.980f, 0.860f, 0.320f},
-        {1.000f, 0.970f, 0.620f}
+        {0.015f, 0.000f, 0.060f},
+        {0.300f, 0.000f, 0.650f},
+        {0.800f, 0.000f, 0.120f},
+        {1.000f, 0.420f, 0.000f},
+        {1.000f, 0.900f, 0.000f},
+        {1.000f, 1.000f, 0.780f}
     };
 
     float scaled_v = t * (num_stops - 1);
@@ -65,8 +63,8 @@ glm::vec4 Engine::heatmapInferno(float value) {
     float local_t = scaled_v - static_cast<float>(i);
 
     glm::vec3 color = mix(stops[i], stops[next_i], local_t);
-    float alpha = 0.10f + powf(t, 0.68f) * 0.58f;
-    if (t < 0.015f) alpha *= (t / 0.015f);
+    float alpha = 0.12f + powf(t, 0.80f) * 0.58f;
+    if (t < 0.02f) alpha *= (t / 0.02f);
 
     return {glm::vec4(color, alpha)};
 }
@@ -132,7 +130,8 @@ void Engine::regenerateCloud() {
                     r * cosf(theta),
                     r * sinf(theta) * sinf(phi)
                 );
-                newCloud.push_back({pos, glm::vec3(0.0f), density});
+                float omega = 0.15f + dis(gen) * 0.55f;
+                newCloud.push_back({pos, glm::vec3(0.0f), density, omega});
 
                 if ((newCloud.size() & 0xFF) == 0)
                     m_buildProgress.store(static_cast<int>(newCloud.size() * 100 / targetPoints));
@@ -189,6 +188,7 @@ void Engine::regenerateSinglePoint(CloudPoint &p) {
                          r * cosf(theta));
             p.vel = glm::vec3(0.0f);
             p.brightness = prob;
+            p.omega = 0.35f;
             return;
         }
     }
@@ -226,20 +226,21 @@ void Engine::initShaders() {
 #version 120
 attribute vec3  aPos;
 attribute float aNorm;
+attribute float aOmega;
 
 uniform float uTime;
 uniform float uMFloat;
+uniform float uColorIntensity;
 uniform int   uClipEnabled;
 
 varying float vNorm;
 varying float vDiscard;
 
 void main() {
-    vec3 rawPos = aPos;
-    vec3 pos = rawPos;
+    vec3 pos = aPos;
 
     if (abs(uMFloat) > 0.001) {
-        float angle = uTime * 0.45 * uMFloat;
+        float angle = uTime * aOmega * uMFloat;
         float s = sin(angle);
         float c = cos(angle);
         float newX = pos.x * c - pos.z * s;
@@ -251,47 +252,30 @@ void main() {
     vDiscard = (uClipEnabled == 1 && pos.x > 0.0 && pos.y > 0.0 && pos.z > 0.0) ? 1.0 : 0.0;
     vNorm    = aNorm;
 
-    float t  = pow(clamp(aNorm, 0.0, 1.0), 0.34);
-    float s9 = t * 9.0;
-    int   ci = int(min(s9, 8.0));
-    float lt = s9 - float(ci);
+    float t  = clamp(pow(clamp(aNorm, 0.0, 1.0), 0.50) * uColorIntensity, 0.0, 1.0);
+    float s5 = t * 5.0;
+    int   ci = int(min(s5, 4.0));
+    float lt = s5 - float(ci);
 
-    vec3 c0 = vec3(0.045, 0.015, 0.130);
-    vec3 c1 = vec3(0.130, 0.035, 0.300);
-    vec3 c2 = vec3(0.300, 0.055, 0.500);
-    vec3 c3 = vec3(0.540, 0.090, 0.560);
-    vec3 c4 = vec3(0.790, 0.160, 0.430);
-    vec3 c5 = vec3(0.940, 0.290, 0.220);
-    vec3 c6 = vec3(0.990, 0.500, 0.070);
-    vec3 c7 = vec3(0.990, 0.700, 0.100);
-    vec3 c8 = vec3(0.980, 0.860, 0.320);
-    vec3 c9 = vec3(1.000, 0.970, 0.620);
+    vec3 c0 = vec3(0.015, 0.000, 0.060);
+    vec3 c1 = vec3(0.300, 0.000, 0.650);
+    vec3 c2 = vec3(0.800, 0.000, 0.120);
+    vec3 c3 = vec3(1.000, 0.420, 0.000);
+    vec3 c4 = vec3(1.000, 0.900, 0.000);
+    vec3 c5 = vec3(1.000, 1.000, 0.780);
 
     vec3 col;
     if      (ci == 0) col = mix(c0, c1, lt);
     else if (ci == 1) col = mix(c1, c2, lt);
     else if (ci == 2) col = mix(c2, c3, lt);
     else if (ci == 3) col = mix(c3, c4, lt);
-    else if (ci == 4) col = mix(c4, c5, lt);
-    else if (ci == 5) col = mix(c5, c6, lt);
-    else if (ci == 6) col = mix(c6, c7, lt);
-    else if (ci == 7) col = mix(c7, c8, lt);
-    else              col = mix(c8, c9, lt);
+    else              col = mix(c4, c5, lt);
 
-    float phaseMotion = 1.0;
-    if (abs(uMFloat) > 0.001) {
-        float phase = atan(rawPos.z, rawPos.x);
-        float phaseSpeed = 0.65 + 0.30 * abs(uMFloat);
-        phaseMotion = 0.82 + 0.18 * sin(phase * abs(uMFloat) - uTime * phaseSpeed * sign(uMFloat));
-    }
-
-    float alpha = 0.10 + pow(t, 0.68) * 0.58;
-    if (t < 0.015) alpha *= (t / 0.015);
-    alpha *= phaseMotion;
-    col *= 0.92 + 0.08 * phaseMotion;
+    float alpha = 0.12 + pow(t, 0.80) * 0.58;
+    if (t < 0.02) alpha *= (t / 0.02);
 
     gl_FrontColor = vec4(col, alpha);
-    gl_PointSize  = 14.0;
+    gl_PointSize  = 3.0;
     gl_Position   = gl_ModelViewProjectionMatrix * vec4(pos, 1.0);
 }
 )GLSL";
@@ -336,8 +320,10 @@ void main() {
 
     m_attrPos = glGetAttribLocation(m_shaderProgram, "aPos");
     m_attrNorm = glGetAttribLocation(m_shaderProgram, "aNorm");
+    m_attrOmega = glGetAttribLocation(m_shaderProgram, "aOmega");
     m_uTime = glGetUniformLocation(m_shaderProgram, "uTime");
     m_uMFloat = glGetUniformLocation(m_shaderProgram, "uMFloat");
+    m_uColorIntensity = glGetUniformLocation(m_shaderProgram, "uColorIntensity");
     m_uClipEnabled = glGetUniformLocation(m_shaderProgram, "uClipEnabled");
 }
 
@@ -415,6 +401,10 @@ void Engine::renderUI() {
     ImGui::SliderInt("Magnetic (m)", &state.m, -state.l, state.l);
     if (ImGui::IsItemDeactivatedAfterEdit()) stateChanged = true;
     ImGui::TextDisabled("Sets angular momentum projection; |m| controls phase motion speed.");
+
+    ImGui::Spacing();
+    ImGui::SliderFloat("Color Intensity", &colorIntensity, 0.1f, 10.0f, "%.1f");
+    ImGui::TextDisabled("Controls heatmap contrast without changing the probability model.");
 
     ImGui::Spacing();
     ImGui::Checkbox("Enable Cross-Section Clip", &clipEnabled);
@@ -662,7 +652,6 @@ void Engine::drawAxes() {
 
 // Uploads cloud data to GPU and renders points using the custom shader
 void Engine::drawCloud(float timeVal) {
-    (void) timeVal;
     if (cloudPoints.empty()) return;
 
     if (m_vboDirty) {
@@ -674,6 +663,7 @@ void Engine::drawCloud(float timeVal) {
 
         std::vector<float> positions(n * 3);
         std::vector<float> norms(n);
+        std::vector<float> omegas(n);
 
         for (size_t i = 0; i < n; ++i) {
             const auto &p = cloudPoints[i];
@@ -681,12 +671,15 @@ void Engine::drawCloud(float timeVal) {
             positions[i * 3 + 1] = p.pos.y;
             positions[i * 3 + 2] = p.pos.z;
             norms[i] = p.brightness * invMax;
+            omegas[i] = p.omega;
         }
 
         if (!m_posVbo)
             glGenBuffers(1, &m_posVbo);
         if (!m_normVbo)
             glGenBuffers(1, &m_normVbo);
+        if (!m_omegaVbo)
+            glGenBuffers(1, &m_omegaVbo);
 
         glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(positions.size() * sizeof(float)), positions.data(),
@@ -694,6 +687,10 @@ void Engine::drawCloud(float timeVal) {
 
         glBindBuffer(GL_ARRAY_BUFFER, m_normVbo);
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(norms.size() * sizeof(float)), norms.data(),
+                     GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ARRAY_BUFFER, m_omegaVbo);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(omegas.size() * sizeof(float)), omegas.data(),
                      GL_STATIC_DRAW);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -710,6 +707,7 @@ void Engine::drawCloud(float timeVal) {
 
     glUniform1f(m_uTime, timeVal);
     glUniform1f(m_uMFloat, static_cast<float>(state.m));
+    glUniform1f(m_uColorIntensity, colorIntensity);
     glUniform1i(m_uClipEnabled, clipEnabled ? 1 : 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_posVbo);
@@ -720,10 +718,15 @@ void Engine::drawCloud(float timeVal) {
     glEnableVertexAttribArray(m_attrNorm);
     glVertexAttribPointer(m_attrNorm, 1, GL_FLOAT, GL_FALSE, 0, nullptr);
 
+    glBindBuffer(GL_ARRAY_BUFFER, m_omegaVbo);
+    glEnableVertexAttribArray(m_attrOmega);
+    glVertexAttribPointer(m_attrOmega, 1, GL_FLOAT, GL_FALSE, 0, nullptr);
+
     glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(cloudPoints.size()));
 
     glDisableVertexAttribArray(m_attrPos);
     glDisableVertexAttribArray(m_attrNorm);
+    glDisableVertexAttribArray(m_attrOmega);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glUseProgram(0);
