@@ -27,7 +27,7 @@ private:
     ///@{
     GLuint m_posVbo = 0;    /**< VBO for point positions */
     GLuint m_normVbo = 0;   /**< VBO for normalized probability values */
-    GLuint m_speedVbo = 0;  /**< VBO for individual rotation speed factors */
+    GLuint m_omegaVbo = 0;  /**< VBO for per-point angular velocity factors */
     bool m_vboDirty = true; /**< Flag indicating if GPU buffers need updating */
     ///@}
 
@@ -35,12 +35,10 @@ private:
     ///@{
     GLint m_attrPos = -1;
     GLint m_attrNorm = -1;
-    GLint m_attrSpeed = -1;
+    GLint m_attrOmega = -1;
     GLint m_uTime = -1;
-    GLint m_uGlobalSpeed = -1;
     GLint m_uMFloat = -1;
-    GLint m_uUseRotation = -1;
-    GLint m_uPointScale = -1;
+    GLint m_uColorIntensity = -1;
     GLint m_uClipEnabled = -1;
     ///@}
 
@@ -80,7 +78,7 @@ private:
 
     /** @name Initialization Helpers */
     ///@{
-    static glm::vec4 heatmapFire(float value);
+    static glm::vec4 heatmapInferno(float value);
     void initGlfwWindow();
     void initOpenGL();
     void initImGui();
@@ -96,6 +94,7 @@ public:
     const int maxPoints = 2.5e5; /**< Total number of points in the probability cloud */
     bool clipEnabled = false;    /**< Toggle for cross-section clipping */
     float clipPlaneZ = 30.0f;    /**< Distance of the clipping plane */
+    float colorIntensity = 1.0f; /**< Multiplier for heatmap contrast */
     float electronAngle = 0.0f;  /**< Current orbital rotation angle for the shell visualization */
     bool m_isInitialized = false; /**< Initialization status flag */
 
