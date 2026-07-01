@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/QuantumAtom.iml" filepath="$PROJECT_DIR$/.idea/QuantumAtom.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/QuantumAtom2.iml" filepath="$PROJECT_DIR$/.idea/QuantumAtom2.iml" />
     </modules>
   </component>
 </project>
