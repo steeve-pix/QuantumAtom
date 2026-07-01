@@ -1,39 +1,53 @@
 # QuantumAtom
 
-Real-time C++23 / OpenGL visualizer for hydrogen-like atomic orbitals.
+![Build](https://github.com/steeve-pix/Atom/actions/workflows/build.yml/badge.svg)
 
-QuantumAtom renders analytical hydrogen-like wavefunctions as interactive 3D probability clouds. It is built with CMake, GLFW, GLAD, GLM, Dear ImGui, multithreaded CPU sampling, and shader-driven point rendering.
+Real-time C++23 and OpenGL visualizer for hydrogen-like atomic orbitals.
 
-Suggested GitHub topics: `cpp23`, `opengl`, `glfw`, `imgui`, `glm`, `cmake`, `scientific-visualization`, `quantum-mechanics`, `hydrogen-atom`, `atomic-orbitals`, `wavefunction`.
+QuantumAtom renders analytical hydrogen-like wavefunctions as interactive 3D probability clouds. It is built for fast educational exploration: choose quantum numbers, watch the cloud regenerate in the background, switch rendering modes, clip into the orbital, and export screenshots.
 
-## Highlights
+<p align="center">
+  <img src="docs/media/quantumatom-8k-halo.png" alt="QuantumAtom n=8 halo rendering shown in a maximized desktop window" width="900">
+</p>
 
-- Principal quantum number support up to `n = 8` by default.
-- Responsive high-n generation using a background worker, cached finished clouds, and a quick preview pass before full refinement.
-- OpenGL 3.3 core renderer with VAOs, GLSL 330 shaders, shader-side clipping, thresholding, colormaps, and phase animation.
-- Rendering modes: density points, glowing billboards, iso-density shell, phase flow, and volumetric halo.
-- Colormaps: inferno, viridis, plasma, magma, and cividis.
-- Dear ImGui tabs for quantum numbers, rendering, camera, export, and physics information.
+## Features
+
+- Hydrogen-like orbital visualization up to `n = 8`.
+- Responsive high-`n` generation with background workers, preview clouds, progressive refinement, and cache reuse.
+- OpenGL point-cloud renderer with shader-side clipping, density thresholding, colormaps, phase animation, and glow effects.
+- Rendering modes:
+  - density points
+  - glowing billboards
+  - iso-density shell
+  - phase flow
+  - volumetric halo
+- Scientific colormaps: inferno, viridis, plasma, magma, and cividis.
+- Dear ImGui control panel with tabs for quantum numbers, rendering, camera, export, and physics notes.
 - Orbital presets from `1s` through high angular-momentum `n=8` states.
-- PNG screenshots via `stb_image_write`.
-- CMake install and CPack packaging, with GitHub Actions artifacts for Windows, Linux, and macOS.
+- PNG screenshot export using `stb_image_write`.
+- Runtime configuration through `config/QuantumAtom.ini`.
+- CMake install rules, CPack packages, and GitHub Actions builds for Windows, Linux, and macOS.
 
-## Gallery
+## Quick Start
 
-Place screenshots and GIFs in `docs/media/` before publishing the repository page or a GitHub Release.
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel
+```
 
-Recommended captures:
+Run the executable from the build tree:
 
-| File | Suggested content |
-| --- | --- |
-| `docs/media/1s-density.png` | Ground-state `1s` density points |
-| `docs/media/2p-phase.gif` | `2p` phase-flow animation |
-| `docs/media/3d-iso.png` | `3d` iso-density shell |
-| `docs/media/4f-glow.png` | `4f` glowing billboard mode |
-| `docs/media/8k-preview-to-refine.gif` | `n=8` preview/refinement workflow |
-| `docs/media/ui-tabs.png` | ImGui tabbed controls |
+```bash
+./build/QuantumAtom
+```
 
-Use the in-app `Export -> Screenshot PNG` button or press `S`; captures are written to `screenshots/`.
+On Windows, the executable is usually:
+
+```powershell
+.\build\QuantumAtom.exe
+```
+
+The build copies `shaders/` and `config/` beside the executable. Keep those folders next to the app when distributing it.
 
 ## Controls
 
@@ -43,11 +57,23 @@ Use the in-app `Export -> Screenshot PNG` button or press `S`; captures are writ
 | Right mouse drag | Pan camera |
 | Shift + left mouse drag | Pan camera |
 | Mouse wheel | Zoom |
-| Up / Down | Increment or decrement `n` |
-| `C` | Toggle clip plane |
+| Up / Down | Change `n` |
+| `C` | Toggle clipping |
 | `S` | Save PNG screenshot |
-| `R` or Space | Reset simulation and camera |
-| ImGui tabs | Change quantum numbers, rendering mode, colormap, point budget, thresholds, camera, export |
+| `R` or Space | Reset the app to launch state |
+| ImGui tabs | Edit quantum numbers, rendering, camera, export, and info settings |
+
+## UI Overview
+
+The control panel is split into focused tabs:
+
+| Tab | Purpose |
+| --- | --- |
+| Quantum Numbers | Select `n`, `l`, `m`, or use orbital presets |
+| Rendering | Change render mode, colormap, point count, thresholds, clipping, colors, and theme |
+| Camera | Adjust yaw, pitch, distance, smoothing, and reset the view |
+| Export | Save screenshots and clear cached clouds |
+| Info | Read the orbital formula and a short physics explanation |
 
 ## Physics Model
 
@@ -58,38 +84,34 @@ psi_nlm(r, theta, phi) = R_nl(r) Y_l^m(theta, phi)
 rho(r, theta, phi) = |psi_nlm(r, theta, phi)|^2
 ```
 
-The radial part uses associated Laguerre polynomials. The angular part uses normalized associated Legendre polynomials for the spherical harmonic probability. The renderer samples `rho * r^2` over a radial/theta grid and then samples `phi` uniformly, which is much more predictable for large orbitals than raw rejection sampling.
+The radial component uses associated Laguerre polynomials. The angular component uses normalized associated Legendre polynomials for the spherical harmonic probability.
 
-This is an educational visualization of hydrogen-like analytical orbitals, not a many-electron chemistry solver. The code is structured so future atom models can be added behind the simulation layer.
+For rendering, QuantumAtom samples `rho * r^2` on a radial/theta density grid, then samples `phi` uniformly. This avoids the worst stalls of raw rejection sampling and keeps high-`n` orbitals usable.
 
-## Build
+This is an educational visualization of analytical orbitals, not a many-electron chemistry solver.
 
-### Requirements
+## Build Requirements
 
 - CMake 3.24 or newer
 - C++23 compiler
 - OpenGL 3.3 capable GPU/driver
-- Git for FetchContent dependencies when not using vcpkg
+- Git, if CMake needs to fetch dependencies
+- Ninja is recommended but not required
 
-Optional dependency management:
+### Linux
 
-- If you configure with a vcpkg toolchain, CMake first tries `find_package(glfw3 CONFIG)` and `find_package(glm CONFIG)`.
-- If packages are not found, CMake falls back to local vendored sources when present, the tracked generated GLAD loader in `third_party/glad`, and FetchContent for GLFW, GLM, Dear ImGui, and stb.
-
-### Configure and compile
+Ubuntu runners and common desktop installs need X11/OpenGL development packages:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --parallel
+sudo apt-get update
+sudo apt-get install -y ninja-build pkg-config xorg-dev libglu1-mesa-dev
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
 ```
 
-Run from the build directory or from an installed/package directory so `shaders/` and `config/` are beside the executable:
+When GLFW is fetched by CMake on Linux, QuantumAtom builds GLFW's X11 backend and disables Wayland in that fallback path. This keeps CI and clean Ubuntu builds from requiring `wayland-scanner`.
 
-```bash
-./build/QuantumAtom
-```
-
-On Windows with MSYS2 UCRT:
+### Windows with MSYS2 UCRT
 
 ```powershell
 $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
@@ -100,83 +122,147 @@ cmake -S . -B build -G Ninja `
 cmake --build build --parallel
 ```
 
-### Useful CMake options
+### macOS
 
-| Option | Default | Purpose |
+```bash
+brew install cmake ninja
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
+
+## Dependencies
+
+CMake first tries installed packages, including packages provided by a vcpkg toolchain. If they are not available, the project falls back to bundled or fetched dependencies.
+
+| Dependency | Use |
+| --- | --- |
+| GLFW | Windowing and input |
+| GLAD | OpenGL function loading |
+| GLM | Vector and matrix math |
+| Dear ImGui | Runtime UI |
+| stb_image_write | PNG screenshot export |
+
+The tracked `third_party/glad` loader keeps OpenGL setup predictable even without a package manager.
+
+## CMake Options
+
+| Option | Default | Description |
 | --- | --- | --- |
-| `QUANTUMATOM_MAX_N` | `8` | Compile-time maximum principal quantum number |
-| `QUANTUMATOM_DEFAULT_POINTS` | `120000` | Initial point-cloud budget |
-| `QUANTUMATOM_WITH_DEBUG_SYMBOLS` | `ON` | Emit symbols for Release builds |
-| `QUANTUMATOM_FETCH_DEPS` | `ON` | Fetch missing GLFW/stb dependencies |
-| `QUANTUMATOM_STATIC_MINGW_RUNTIME` | `ON` | Static MinGW runtime linkage |
+| `QUANTUMATOM_MAX_N` | `8` | Maximum principal quantum number |
+| `QUANTUMATOM_DEFAULT_POINTS` | `120000` | Startup point-cloud budget |
+| `QUANTUMATOM_WITH_DEBUG_SYMBOLS` | `ON` | Emit symbols for optimized builds |
+| `QUANTUMATOM_FETCH_DEPS` | `ON` | Fetch missing dependencies |
+| `QUANTUMATOM_STATIC_MINGW_RUNTIME` | `ON` | Statically link MinGW runtime libraries |
 
 Example:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUANTUMATOM_MAX_N=8 -DQUANTUMATOM_DEFAULT_POINTS=350000
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUANTUMATOM_MAX_N=8 -DQUANTUMATOM_DEFAULT_POINTS=250000
 ```
 
-### Install and package
+## Install and Package
 
 ```bash
 cmake --install build --config Release --prefix dist/QuantumAtom
 cmake --build build --target package --config Release
 ```
 
-CPack emits `.zip` and `.tar.gz` packages that include the executable, `shaders/`, `config/`, `README.md`, and `LICENSE`.
-
-## Releases
-
-The workflow at `.github/workflows/build.yml` builds Windows, Linux, and macOS Release packages. It uploads artifacts for every push and pull request. Pushing a tag like `v0.3.0` creates a GitHub Release with generated notes and attaches the packaged artifacts.
+CPack creates `.zip` and `.tar.gz` packages containing the executable, shaders, default config, samples, docs, README, and license.
 
 ## Runtime Configuration
 
-Defaults live in `config/QuantumAtom.ini`. The app loads this file from common runtime locations and saves UI defaults on shutdown.
+Defaults live in `config/QuantumAtom.ini`. The app searches common build/install locations at startup and saves current UI defaults on shutdown.
 
-Important fields:
+Common fields:
 
 ```ini
 pointCount=120000
 densityThreshold=0.0
 pointSize=7.0
+clipEnabled=false
 clipMode=2
 renderMode=0
 colorMap=0
+theme=0
 backgroundColor=0.035,0.04,0.055
 ```
 
-## Performance Notes for n=8
+Clip modes:
 
-High principal quantum numbers are expensive because the spatial extent and number of nodes increase quickly. QuantumAtom keeps the app responsive with:
+| Value | Mode |
+| --- | --- |
+| `0` | Adjustable X plane |
+| `1` | Positive X/Y quadrant |
+| `2` | Positive X/Y/Z octant |
 
-- background cloud generation;
-- multithreaded density-grid evaluation;
-- preview cloud generation for `n >= 7`;
-- cache reuse for repeated `(n, l, m, pointCount)` states;
-- GPU-side clipping, thresholding, colormaps, iso-shell filtering, and phase animation.
+## Performance Notes
 
-For older integrated GPUs, start with `100000` to `200000` points and increase once the target state is cached. The default upper UI budget is `600000` points.
+High principal quantum numbers are expensive because the orbital radius and node count grow quickly. QuantumAtom keeps the interface responsive by:
+
+- generating clouds on a background thread;
+- limiting density-grid work for high `n`;
+- showing a lower-resolution preview before full refinement;
+- caching finished `(n, l, m, pointCount)` clouds;
+- keeping clipping, colormaps, thresholding, and render modes on the GPU.
+
+For older integrated GPUs, start around `100000` to `200000` points. Increase the point count after the target orbital is cached. The UI limit is `600000` points.
+
+## Gallery and Screenshots
+
+Screenshots are written to `screenshots/` from the Export tab or by pressing `S`.
+
+Tracked README media lives in `docs/media/`. The gallery below was captured from the native app in a maximized desktop window.
+
+| 1s density | 2p+ phase flow |
+| --- | --- |
+| <img src="docs/media/quantumatom-1s-density.png" alt="1s density point cloud" width="420"> | <img src="docs/media/quantumatom-2p-phase.png" alt="2p plus phase flow render mode" width="420"> |
+
+| 3d+ iso shell | 4f+ glowing billboards |
+| --- | --- |
+| <img src="docs/media/quantumatom-3d-iso.png" alt="3d plus iso-density shell render mode" width="420"> | <img src="docs/media/quantumatom-4f-glow.png" alt="4f plus glowing billboard render mode" width="420"> |
+
+| 8k+ volumetric halo |
+| --- |
+| <img src="docs/media/quantumatom-8k-halo.png" alt="8k plus volumetric halo render mode" width="860"> |
 
 ## Repository Layout
 
 ```text
 include/core/          Engine and runtime configuration
 include/math/          Quantum probability calculations
-include/utils/         Shared types, camera, shader loading
+include/utils/         Camera, shared types, shader loading, OpenGL loader include
 src/core/              Engine and config implementations
 shaders/               GLSL 330 renderer programs
 config/                Default runtime settings
 samples/               Small educational/sample data files
-.github/workflows/     CI/CD packaging workflow
+docs/media/            README and release screenshots
+.github/workflows/     CI and packaging workflow
 ```
 
-## Web Demo Note
+For a guided architecture walkthrough, read `src/HowItWorks.cpp`.
 
-A WebGL/WebGPU port is intentionally separate from the native renderer. A future web demo should reuse the same orbital presets and formulas, but generate points in a web worker or compute pass to keep the browser UI responsive.
+## Releases
+
+The GitHub Actions workflow builds Release packages for Windows, Linux, and macOS. Pull requests and pushes produce build artifacts. Tags matching `v*` publish a GitHub Release with generated notes and packaged artifacts.
+
+## Project Metadata
+
+Suggested GitHub topics:
+
+```text
+cpp23, opengl, glfw, imgui, glm, cmake, scientific-visualization,
+quantum-mechanics, hydrogen-atom, atomic-orbitals, wavefunction
+```
+
+Short description:
+
+```text
+Real-time C++23/OpenGL hydrogen-like atomic orbital visualizer.
+```
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Useful first contributions include gallery captures, more orbital presets, measured performance profiles for `n=7/8`, and documentation improvements.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Useful contributions include performance profiles for high-`n` orbitals, new rendering modes, educational examples, screenshots/GIFs, and clean portability fixes.
 
 ## License
 
