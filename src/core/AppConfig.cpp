@@ -124,6 +124,7 @@ namespace {
         config.renderMode = static_cast<RenderMode>(std::clamp(parseNumber(values, "renderMode", 0), 0, 4));
         config.colorMap = static_cast<ColorMap>(std::clamp(parseNumber(values, "colorMap", 0), 0, 4));
         config.theme = static_cast<UiTheme>(std::clamp(parseNumber(values, "theme", 0), 0, 2));
+        config.uiLanguage = static_cast<UiLanguage>(std::clamp(parseNumber(values, "uiLanguage", 0), 0, 2));
         config.pointTint = parseVec3(values, "pointTint", config.pointTint);
         config.backgroundColor = parseVec3(values, "backgroundColor", config.backgroundColor);
         return config;
@@ -177,6 +178,7 @@ bool AppConfig::save() const {
     file << "renderMode=" << static_cast<int>(renderMode) << '\n';
     file << "colorMap=" << static_cast<int>(colorMap) << '\n';
     file << "theme=" << static_cast<int>(theme) << '\n';
+    file << "uiLanguage=" << static_cast<int>(uiLanguage) << '\n';
     file << "pointTint=" << pointTint.r << ',' << pointTint.g << ',' << pointTint.b << '\n';
     file << "backgroundColor=" << backgroundColor.r << ',' << backgroundColor.g << ',' << backgroundColor.b << '\n';
     return true;

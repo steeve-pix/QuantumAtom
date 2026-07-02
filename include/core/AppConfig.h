@@ -30,6 +30,7 @@ struct AppConfig {
     RenderMode renderMode = RenderMode::DensityPoints;
     ColorMap colorMap = ColorMap::Inferno;
     UiTheme theme = UiTheme::Dark;
+    UiLanguage uiLanguage = UiLanguage::English;
     glm::vec3 pointTint = glm::vec3(1.0f);
     glm::vec3 backgroundColor = glm::vec3(0.035f, 0.04f, 0.055f);
     std::filesystem::path sourcePath = "config/QuantumAtom.ini";

@@ -43,6 +43,12 @@ enum class UiTheme : int {
     Light = 2
 };
 
+enum class UiLanguage : int {
+    English = 0,
+    French = 1,
+    Spanish = 2
+};
+
 // Clipping is intentionally shader-side so switching modes does not rebuild the
 // probability cloud. XPlane is adjustable; the quadrant/octant modes use zero as
 // the split point to reveal the orbital interior quickly.
