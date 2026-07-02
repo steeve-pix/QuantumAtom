@@ -59,15 +59,17 @@ void main() {
     }
     vDiscard = clipped ? 1.0 : 0.0;
 
-    // Point size is scaled per render mode. The fragment shader still masks the
-    // sprite into a circle, so larger modes become soft billboards rather than
-    // square OpenGL points.
+    vec4 clipPosition = uViewProjection * vec4(pos, 1.0);
+
+    // Point size follows perspective instead of staying fixed in screen pixels.
+    // The launch camera distance is the visual reference for the size slider.
     float modeScale = 1.0;
     if (uRenderMode == 1) modeScale = 1.45;
     if (uRenderMode == 2) modeScale = 0.82;
-    if (uRenderMode == 3) modeScale = 1.22 + 0.18 * vPhase;
+    if (uRenderMode == 3) modeScale = 1.22;
     if (uRenderMode == 4) modeScale = 2.35;
 
-    gl_PointSize = max(1.0, uPointSize * modeScale);
-    gl_Position = uViewProjection * vec4(pos, 1.0);
+    float perspectiveScale = clamp(380.0 / max(clipPosition.w, 1.0), 0.15, 14.0);
+    gl_PointSize = clamp(uPointSize * modeScale * perspectiveScale, 1.0, 96.0);
+    gl_Position = clipPosition;
 }

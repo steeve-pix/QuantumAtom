@@ -101,7 +101,7 @@ void main() {
     }
 
     vec3 color = colormap(heat) * uTintColor;
-    float alpha = 0.10 + pow(heat, 0.75) * 0.62;
+    float alpha = 1.0;
 
     if (uRenderMode == 1) {
         float glow = smoothstep(0.25, 0.0, distSq);
@@ -117,10 +117,8 @@ void main() {
         float fog = exp(-distSq * 8.5);
         alpha = (0.025 + heat * 0.11) * fog;
         color = mix(color, vec3(0.55, 0.78, 1.0) * uTintColor, 0.28);
-    } else {
-        alpha *= core;
     }
 
-    if (heat < 0.025) alpha *= heat / 0.025;
+    if (uRenderMode != 0 && heat < 0.025) alpha *= heat / 0.025;
     FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
 }
