@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(QuantumAtom
-    VERSION 0.3.0
+    VERSION 1.0.2
     DESCRIPTION "Real-time hydrogen-like atomic orbital visualizer"
     HOMEPAGE_URL "https://github.com/steeve-pix/Atom"
     LANGUAGES C CXX
