@@ -170,6 +170,7 @@ public:
     RenderMode renderMode = RenderMode::DensityPoints;
     ColorMap colorMap = ColorMap::Inferno;
     UiTheme theme = UiTheme::Dark;
+    UiLanguage uiLanguage = UiLanguage::English;
     float electronAngle = 0.0f;
     bool m_isInitialized = false;
 
