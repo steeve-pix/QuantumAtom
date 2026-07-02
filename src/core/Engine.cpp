@@ -44,15 +44,38 @@ namespace {
         double totalWeight = 0.0;
     };
 
-    const char *renderModeName(RenderMode mode) {
-        switch (mode) {
-            case RenderMode::DensityPoints: return "Density points";
-            case RenderMode::GlowBillboards: return "Glowing billboards";
-            case RenderMode::IsoShell: return "Iso-density shell";
-            case RenderMode::PhaseFlow: return "Phase flow";
-            case RenderMode::HaloFog: return "Volumetric halo";
+    const char *uiText(UiLanguage language, const char *english, const char *french, const char *spanish) {
+        switch (language) {
+            case UiLanguage::English: return english;
+            case UiLanguage::French: return french;
+            case UiLanguage::Spanish: return spanish;
         }
-        return "Unknown";
+        return english;
+    }
+
+    const char *languageName(UiLanguage language) {
+        switch (language) {
+            case UiLanguage::English: return "English";
+            case UiLanguage::French: return "Francais";
+            case UiLanguage::Spanish: return "Espanol";
+        }
+        return "English";
+    }
+
+    const char *renderModeName(RenderMode mode, UiLanguage language) {
+        switch (mode) {
+            case RenderMode::DensityPoints:
+                return uiText(language, "Density points", "Points de densite", "Puntos de densidad");
+            case RenderMode::GlowBillboards:
+                return uiText(language, "Glowing billboards", "Lueurs", "Brillos");
+            case RenderMode::IsoShell:
+                return uiText(language, "Iso-density shell", "Coque iso-densite", "Capa iso-densidad");
+            case RenderMode::PhaseFlow:
+                return uiText(language, "Phase flow", "Flux de phase", "Flujo de fase");
+            case RenderMode::HaloFog:
+                return uiText(language, "Volumetric halo", "Halo volumetrique", "Halo volumetrico");
+        }
+        return uiText(language, "Unknown", "Inconnu", "Desconocido");
     }
 
     const char *colorMapName(ColorMap map) {
@@ -66,25 +89,26 @@ namespace {
         return "Unknown";
     }
 
-    const char *themeName(UiTheme theme) {
+    const char *themeName(UiTheme theme, UiLanguage language) {
         switch (theme) {
-            case UiTheme::Dark: return "Dark";
-            case UiTheme::Classic: return "Classic";
-            case UiTheme::Light: return "Light";
+            case UiTheme::Dark: return uiText(language, "Dark", "Sombre", "Oscuro");
+            case UiTheme::Classic: return uiText(language, "Classic", "Classique", "Clasico");
+            case UiTheme::Light: return uiText(language, "Light", "Clair", "Claro");
         }
-        return "Unknown";
+        return uiText(language, "Unknown", "Inconnu", "Desconocido");
     }
 
-    const char *stageName(CloudBuildStage stage) {
+    const char *stageName(CloudBuildStage stage, UiLanguage language) {
         switch (stage) {
-            case CloudBuildStage::Idle: return "Idle";
-            case CloudBuildStage::CacheHit: return "Cache hit";
-            case CloudBuildStage::ScanningDensity: return "Scanning density";
-            case CloudBuildStage::PreviewReady: return "Preview ready";
-            case CloudBuildStage::Refining: return "Refining";
-            case CloudBuildStage::Complete: return "Complete";
+            case CloudBuildStage::Idle: return uiText(language, "Idle", "Pret", "Listo");
+            case CloudBuildStage::CacheHit: return uiText(language, "Cache hit", "Cache trouve", "Cache encontrado");
+            case CloudBuildStage::ScanningDensity:
+                return uiText(language, "Scanning density", "Analyse densite", "Escaneando densidad");
+            case CloudBuildStage::PreviewReady: return uiText(language, "Preview ready", "Apercu pret", "Vista previa lista");
+            case CloudBuildStage::Refining: return uiText(language, "Refining", "Raffinage", "Refinando");
+            case CloudBuildStage::Complete: return uiText(language, "Complete", "Termine", "Completo");
         }
-        return "Unknown";
+        return uiText(language, "Unknown", "Inconnu", "Desconocido");
     }
 
     void helpMarker(const char *text) {
@@ -99,13 +123,13 @@ namespace {
         }
     }
 
-    bool renderModeCombo(const char *label, RenderMode &mode) {
+    bool renderModeCombo(const char *label, RenderMode &mode, UiLanguage language) {
         bool changed = false;
-        if (ImGui::BeginCombo(label, renderModeName(mode))) {
+        if (ImGui::BeginCombo(label, renderModeName(mode, language))) {
             for (int i = 0; i <= static_cast<int>(RenderMode::HaloFog); ++i) {
                 const auto candidate = static_cast<RenderMode>(i);
                 const bool selected = candidate == mode;
-                if (ImGui::Selectable(renderModeName(candidate), selected)) {
+                if (ImGui::Selectable(renderModeName(candidate, language), selected)) {
                     mode = candidate;
                     changed = true;
                 }
@@ -133,13 +157,13 @@ namespace {
         return changed;
     }
 
-    bool themeCombo(const char *label, UiTheme &theme) {
+    bool themeCombo(const char *label, UiTheme &theme, UiLanguage language) {
         bool changed = false;
-        if (ImGui::BeginCombo(label, themeName(theme))) {
+        if (ImGui::BeginCombo(label, themeName(theme, language))) {
             for (int i = 0; i <= static_cast<int>(UiTheme::Light); ++i) {
                 const auto candidate = static_cast<UiTheme>(i);
                 const bool selected = candidate == theme;
-                if (ImGui::Selectable(themeName(candidate), selected)) {
+                if (ImGui::Selectable(themeName(candidate, language), selected)) {
                     theme = candidate;
                     changed = true;
                 }
@@ -150,22 +174,39 @@ namespace {
         return changed;
     }
 
-    const char *clipModeName(ClipMode mode) {
-        switch (mode) {
-            case ClipMode::XPlane: return "X plane";
-            case ClipMode::PositiveXY: return "+X +Y quadrant";
-            case ClipMode::PositiveXYZ: return "+X +Y +Z octant";
+    bool languageCombo(const char *label, UiLanguage &language) {
+        bool changed = false;
+        if (ImGui::BeginCombo(label, languageName(language))) {
+            for (int i = 0; i <= static_cast<int>(UiLanguage::Spanish); ++i) {
+                const auto candidate = static_cast<UiLanguage>(i);
+                const bool selected = candidate == language;
+                if (ImGui::Selectable(languageName(candidate), selected)) {
+                    language = candidate;
+                    changed = true;
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
         }
-        return "Unknown";
+        return changed;
     }
 
-    bool clipModeCombo(const char *label, ClipMode &mode) {
+    const char *clipModeName(ClipMode mode, UiLanguage language) {
+        switch (mode) {
+            case ClipMode::XPlane: return uiText(language, "X plane", "Plan X", "Plano X");
+            case ClipMode::PositiveXY: return uiText(language, "+X +Y quadrant", "Quadrant +X +Y", "Cuadrante +X +Y");
+            case ClipMode::PositiveXYZ: return uiText(language, "+X +Y +Z octant", "Octant +X +Y +Z", "Octante +X +Y +Z");
+        }
+        return uiText(language, "Unknown", "Inconnu", "Desconocido");
+    }
+
+    bool clipModeCombo(const char *label, ClipMode &mode, UiLanguage language) {
         bool changed = false;
-        if (ImGui::BeginCombo(label, clipModeName(mode))) {
+        if (ImGui::BeginCombo(label, clipModeName(mode, language))) {
             for (int i = 0; i <= static_cast<int>(ClipMode::PositiveXYZ); ++i) {
                 const auto candidate = static_cast<ClipMode>(i);
                 const bool selected = candidate == mode;
-                if (ImGui::Selectable(clipModeName(candidate), selected)) {
+                if (ImGui::Selectable(clipModeName(candidate, language), selected)) {
                     mode = candidate;
                     changed = true;
                 }
@@ -261,6 +302,7 @@ Engine::~Engine() {
     m_config.renderMode = renderMode;
     m_config.colorMap = colorMap;
     m_config.theme = theme;
+    m_config.uiLanguage = uiLanguage;
     m_config.pointTint = pointTint;
     m_config.backgroundColor = backgroundColor;
     (void) m_config.save();
@@ -319,6 +361,7 @@ void Engine::applyRuntimeConfig(const AppConfig &config) {
     renderMode = config.renderMode;
     colorMap = config.colorMap;
     theme = config.theme;
+    uiLanguage = config.uiLanguage;
     pointTint = config.pointTint;
     backgroundColor = config.backgroundColor;
 }
@@ -881,9 +924,12 @@ void Engine::renderUI() {
         ImGui::Text("QuantumAtom %s", QUANTUMATOM_VERSION_STRING);
         ImGui::Separator();
         ImGui::Text("FPS %.1f  %.2f ms", m_fps, m_frameTimeMs);
-        ImGui::Text("Points %d / %d", static_cast<int>(cloudPoints.size()), pointBudget);
+        ImGui::Text("%s %d / %d",
+                    uiText(uiLanguage, "Points", "Points", "Puntos"),
+                    static_cast<int>(cloudPoints.size()),
+                    pointBudget);
         const auto stage = static_cast<CloudBuildStage>(m_buildStage.load());
-        ImGui::Text("Build %s", stageName(stage));
+        ImGui::Text("%s %s", uiText(uiLanguage, "Build", "Calcul", "Proceso"), stageName(stage, uiLanguage));
         const int pct = m_buildProgress.load();
         if (pct < 100 && stage != CloudBuildStage::Idle && stage != CloudBuildStage::CacheHit) {
             char label[16];
@@ -893,9 +939,29 @@ void Engine::renderUI() {
     }
     ImGui::End();
 
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 270.0f, 15.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.92f);
+    constexpr ImGuiWindowFlags languageFlags = ImGuiWindowFlags_AlwaysAutoResize |
+                                               ImGuiWindowFlags_NoSavedSettings |
+                                               ImGuiWindowFlags_NoFocusOnAppearing |
+                                               ImGuiWindowFlags_NoNav |
+                                               ImGuiWindowFlags_NoMove;
+    const std::string languageTitle = std::string(uiText(uiLanguage, "Language", "Langue", "Idioma")) +
+                                      "##LanguagePanel";
+    if (ImGui::Begin(languageTitle.c_str(), nullptr, languageFlags)) {
+        ImGui::SetNextItemWidth(155.0f);
+        (void) languageCombo(uiText(uiLanguage, "UI language", "Langue UI", "Idioma UI"), uiLanguage);
+    }
+    ImGui::End();
+
     ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(455.0f, 690.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("QuantumAtom Controls");
+    const std::string controlsTitle = std::string(uiText(uiLanguage,
+                                                         "QuantumAtom Controls",
+                                                         "Controles QuantumAtom",
+                                                         "Controles QuantumAtom")) +
+                                      "##QuantumAtomControls";
+    ImGui::Begin(controlsTitle.c_str());
 
     bool stateChanged = false;
     bool pointBudgetChanged = false;
@@ -903,30 +969,39 @@ void Engine::renderUI() {
     // Tabs keep the growing toolset discoverable without making the first panel
     // taller than the screen.
     if (ImGui::BeginTabBar("MainTabs")) {
-        if (ImGui::BeginTabItem("Quantum Numbers")) {
+        if (ImGui::BeginTabItem(uiText(uiLanguage, "Quantum Numbers", "Nombres quantiques", "Numeros cuanticos"))) {
             ImGui::SliderInt("n", &state.n, 1, QUANTUMATOM_MAX_N);
             const bool nFinished = ImGui::IsItemDeactivatedAfterEdit();
             state.n = std::clamp(state.n, 1, QUANTUMATOM_MAX_N);
             state.l = std::clamp(state.l, 0, state.n - 1);
             state.m = std::clamp(state.m, -state.l, state.l);
-            helpMarker("Principal quantum number. Higher n creates larger orbitals and more radial nodes.");
+            helpMarker(uiText(uiLanguage,
+                              "Principal quantum number. Higher n creates larger orbitals and more radial nodes.",
+                              "Nombre quantique principal. Un n plus haut cree des orbitales plus grandes.",
+                              "Numero cuantico principal. Un n mas alto crea orbitales mas grandes."));
             if (nFinished) stateChanged = true;
 
             ImGui::SliderInt("l", &state.l, 0, state.n - 1);
             const bool lFinished = ImGui::IsItemDeactivatedAfterEdit();
             state.l = std::clamp(state.l, 0, state.n - 1);
             state.m = std::clamp(state.m, -state.l, state.l);
-            helpMarker("Azimuthal quantum number. l=0,1,2,3 map to s,p,d,f; larger l values are high angular-momentum states.");
+            helpMarker(uiText(uiLanguage,
+                              "Azimuthal quantum number. l=0,1,2,3 map to s,p,d,f; larger l values are high angular-momentum states.",
+                              "Nombre quantique azimutal. l=0,1,2,3 correspond a s,p,d,f.",
+                              "Numero cuantico azimutal. l=0,1,2,3 corresponde a s,p,d,f."));
             if (lFinished) stateChanged = true;
 
             ImGui::SliderInt("m", &state.m, -state.l, state.l);
             const bool mFinished = ImGui::IsItemDeactivatedAfterEdit();
             state.m = std::clamp(state.m, -state.l, state.l);
-            helpMarker("Magnetic quantum number. The sign changes phase-flow direction; |m| changes angular structure.");
+            helpMarker(uiText(uiLanguage,
+                              "Magnetic quantum number. The sign changes phase-flow direction; |m| changes angular structure.",
+                              "Nombre quantique magnetique. Le signe change la direction du flux de phase.",
+                              "Numero cuantico magnetico. El signo cambia la direccion del flujo de fase."));
             if (mFinished) stateChanged = true;
 
             ImGui::Spacing();
-            ImGui::SeparatorText("Presets");
+            ImGui::SeparatorText(uiText(uiLanguage, "Presets", "Prereglages", "Preajustes"));
             const float buttonWidth = 62.0f;
             int column = 0;
             for (const auto &preset: kOrbitalPresets) {
@@ -940,100 +1015,199 @@ void Engine::renderUI() {
             }
 
             ImGui::Spacing();
-            ImGui::TextWrapped("Current state: n=%d, l=%d, m=%d", state.n, state.l, state.m);
+            ImGui::TextWrapped(uiText(uiLanguage,
+                                      "Current state: n=%d, l=%d, m=%d",
+                                      "Etat actuel: n=%d, l=%d, m=%d",
+                                      "Estado actual: n=%d, l=%d, m=%d"),
+                               state.n,
+                               state.l,
+                               state.m);
             if (state.n >= 7) {
-                ImGui::TextWrapped("n=7 and n=8 use a quick preview cloud first, then refine in the background.");
+                ImGui::TextWrapped("%s", uiText(uiLanguage,
+                                                "n=7 and n=8 use a quick preview cloud first, then refine in the background.",
+                                                "n=7 et n=8 affichent d'abord un apercu rapide, puis raffinent en arriere-plan.",
+                                                "n=7 y n=8 muestran primero una vista previa rapida y luego refinan en segundo plano."));
             }
 
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Rendering")) {
-            (void) renderModeCombo("Mode", renderMode);
-            helpMarker("Density points are standard samples; glow and halo are additive billboards; iso-shell filters around a normalized density band; phase flow animates m-dependent phase.");
+        if (ImGui::BeginTabItem(uiText(uiLanguage, "Rendering", "Rendu", "Renderizado"))) {
+            (void) renderModeCombo(uiText(uiLanguage, "Mode", "Mode", "Modo"), renderMode, uiLanguage);
+            helpMarker(uiText(uiLanguage,
+                              "Density points are standard samples; glow and halo are additive billboards; iso-shell filters around a normalized density band; phase flow animates m-dependent phase.",
+                              "Les points de densite sont standards; lueur et halo sont des billboards additifs.",
+                              "Los puntos de densidad son muestras normales; brillo y halo son billboards aditivos."));
 
-            (void) colorMapCombo("Colormap", colorMap);
-            helpMarker("Colormap lookup is evaluated in the fragment shader.");
+            (void) colorMapCombo(uiText(uiLanguage, "Colormap", "Palette", "Mapa de color"), colorMap);
+            helpMarker(uiText(uiLanguage,
+                              "Colormap lookup is evaluated in the fragment shader.",
+                              "La palette est evaluee dans le shader de fragment.",
+                              "El mapa de color se evalua en el fragment shader."));
 
-            ImGui::SliderInt("Point count", &pointBudget, kMinimumPointCount, kMaximumPointCount);
+            ImGui::SliderInt(uiText(uiLanguage, "Point count", "Nombre de points", "Cantidad de puntos"),
+                             &pointBudget,
+                             kMinimumPointCount,
+                             kMaximumPointCount);
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 pointBudget = std::clamp(pointBudget, kMinimumPointCount, kMaximumPointCount);
                 pointBudgetChanged = true;
             }
-            helpMarker("Changing this rebuilds the cloud. Larger values improve density at the cost of memory and generation time.");
+            helpMarker(uiText(uiLanguage,
+                              "Changing this rebuilds the cloud. Larger values improve density at the cost of memory and generation time.",
+                              "Changer ceci reconstruit le nuage. Plus de points coute plus de memoire et de temps.",
+                              "Cambiar esto reconstruye la nube. Mas puntos usan mas memoria y tiempo."));
 
-            ImGui::SliderFloat("Density threshold", &densityThreshold, 0.0f, 0.95f, "%.3f");
-            ImGui::SliderFloat("Point size", &pointSize, 1.5f, 32.0f, "%.1f");
-            ImGui::SliderFloat("Color intensity", &colorIntensity, 0.1f, 10.0f, "%.2f");
-            ImGui::SliderFloat("Animation speed", &animationSpeed, 0.0f, 4.0f, "%.2f");
+            ImGui::SliderFloat(uiText(uiLanguage, "Density threshold", "Seuil de densite", "Umbral de densidad"),
+                               &densityThreshold,
+                               0.0f,
+                               0.95f,
+                               "%.3f");
+            ImGui::SliderFloat(uiText(uiLanguage, "Point size", "Taille des points", "Tamano de puntos"),
+                               &pointSize,
+                               1.5f,
+                               32.0f,
+                               "%.1f");
+            ImGui::SliderFloat(uiText(uiLanguage, "Color intensity", "Intensite couleur", "Intensidad de color"),
+                               &colorIntensity,
+                               0.1f,
+                               10.0f,
+                               "%.2f");
+            ImGui::SliderFloat(uiText(uiLanguage, "Animation speed", "Vitesse animation", "Velocidad animacion"),
+                               &animationSpeed,
+                               0.0f,
+                               4.0f,
+                               "%.2f");
 
             if (renderMode == RenderMode::IsoShell) {
-                ImGui::SliderFloat("Iso level", &isoLevel, 0.02f, 0.98f, "%.3f");
-                ImGui::SliderFloat("Iso width", &isoWidth, 0.005f, 0.25f, "%.3f");
+                ImGui::SliderFloat(uiText(uiLanguage, "Iso level", "Niveau iso", "Nivel iso"),
+                                   &isoLevel,
+                                   0.02f,
+                                   0.98f,
+                                   "%.3f");
+                ImGui::SliderFloat(uiText(uiLanguage, "Iso width", "Largeur iso", "Ancho iso"),
+                                   &isoWidth,
+                                   0.005f,
+                                   0.25f,
+                                   "%.3f");
             }
 
-            ImGui::Checkbox("Enable clipping", &clipEnabled);
-            (void) clipModeCombo("Clip mode", clipMode);
-            helpMarker("X plane removes points beyond the adjustable X value. +X +Y removes the positive XY quadrant. +X +Y +Z restores the old positive-octant clip.");
+            ImGui::Checkbox(uiText(uiLanguage, "Enable clipping", "Activer decoupe", "Activar recorte"),
+                            &clipEnabled);
+            (void) clipModeCombo(uiText(uiLanguage, "Clip mode", "Mode decoupe", "Modo recorte"),
+                                 clipMode,
+                                 uiLanguage);
+            helpMarker(uiText(uiLanguage,
+                              "X plane removes points beyond the adjustable X value. +X +Y removes the positive XY quadrant. +X +Y +Z restores the old positive-octant clip.",
+                              "Le plan X retire les points au-dela de X. Les autres modes retirent un quadrant ou octant.",
+                              "El plano X quita puntos mas alla de X. Los otros modos quitan un cuadrante u octante."));
             if (clipMode == ClipMode::XPlane) {
-                ImGui::SliderFloat("Clip X", &clipPlane, -600.0f, 600.0f, "%.1f");
+                ImGui::SliderFloat(uiText(uiLanguage, "Clip X", "Decoupe X", "Recorte X"),
+                                   &clipPlane,
+                                   -600.0f,
+                                   600.0f,
+                                   "%.1f");
             }
 
-            ImGui::Checkbox("Axes", &m_showAxes);
+            ImGui::Checkbox(uiText(uiLanguage, "Axes", "Axes", "Ejes"), &m_showAxes);
             ImGui::SameLine();
-            ImGui::Checkbox("Electron tracker", &m_showElectronTracker);
+            ImGui::Checkbox(uiText(uiLanguage, "Electron tracker", "Suivi electron", "Rastreador electron"),
+                            &m_showElectronTracker);
 
-            ImGui::ColorEdit3("Point tint", glm::value_ptr(pointTint));
-            ImGui::ColorEdit3("Background", glm::value_ptr(backgroundColor));
+            ImGui::ColorEdit3(uiText(uiLanguage, "Point tint", "Teinte points", "Tinte puntos"),
+                              glm::value_ptr(pointTint));
+            ImGui::ColorEdit3(uiText(uiLanguage, "Background", "Arriere-plan", "Fondo"),
+                              glm::value_ptr(backgroundColor));
 
-            if (themeCombo("Theme", theme)) {
+            if (themeCombo(uiText(uiLanguage, "Theme", "Theme", "Tema"), theme, uiLanguage)) {
                 applyTheme(theme);
             }
 
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Camera")) {
-            ImGui::SliderFloat("Yaw", &camera.targetYaw, -180.0f, 180.0f, "%.1f");
-            ImGui::SliderFloat("Pitch", &camera.targetPitch, -89.0f, 89.0f, "%.1f");
-            ImGui::SliderFloat("Distance", &camera.targetDistance, 45.0f, 2200.0f, "%.1f");
-            ImGui::SliderFloat("Smoothing", &camera.smoothness, 0.1f, 12.0f, "%.2f");
+        if (ImGui::BeginTabItem(uiText(uiLanguage, "Camera", "Camera", "Camara"))) {
+            ImGui::SliderFloat(uiText(uiLanguage, "Yaw", "Lacet", "Yaw"),
+                               &camera.targetYaw,
+                               -180.0f,
+                               180.0f,
+                               "%.1f");
+            ImGui::SliderFloat(uiText(uiLanguage, "Pitch", "Tangage", "Pitch"),
+                               &camera.targetPitch,
+                               -89.0f,
+                               89.0f,
+                               "%.1f");
+            ImGui::SliderFloat(uiText(uiLanguage, "Distance", "Distance", "Distancia"),
+                               &camera.targetDistance,
+                               45.0f,
+                               2200.0f,
+                               "%.1f");
+            ImGui::SliderFloat(uiText(uiLanguage, "Smoothing", "Lissage", "Suavizado"),
+                               &camera.smoothness,
+                               0.1f,
+                               12.0f,
+                               "%.2f");
 
-            if (ImGui::Button("Reset View")) {
+            if (ImGui::Button(uiText(uiLanguage, "Reset View", "Reinitialiser vue", "Restablecer vista"))) {
                 resetCameraToLaunchPose();
             }
 
-            ImGui::TextWrapped("Left drag rotates. Right drag or Shift+left drag pans. Mouse wheel zooms.");
+            ImGui::TextWrapped("%s", uiText(uiLanguage,
+                                            "Left drag rotates. Right drag or Shift+left drag pans. Mouse wheel zooms.",
+                                            "Glisser gauche tourne. Glisser droit ou Maj+gauche deplace. La molette zoome.",
+                                            "Arrastrar izquierdo rota. Derecho o Shift+izquierdo desplaza. La rueda hace zoom."));
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Export")) {
-            if (ImGui::Button("Screenshot PNG")) {
+        if (ImGui::BeginTabItem(uiText(uiLanguage, "Export", "Export", "Exportar"))) {
+            if (ImGui::Button(uiText(uiLanguage, "Screenshot PNG", "Capture PNG", "Captura PNG"))) {
                 requestScreenshot();
             }
-            helpMarker("Captures the current framebuffer, including the UI, into the screenshots directory.");
+            helpMarker(uiText(uiLanguage,
+                              "Captures the current framebuffer, including the UI, into the screenshots directory.",
+                              "Capture l'image actuelle, avec l'UI, dans le dossier screenshots.",
+                              "Captura la imagen actual, incluyendo la UI, en la carpeta screenshots."));
 
             if (!m_lastScreenshotPath.empty()) {
-                ImGui::TextWrapped("Last screenshot: %s", m_lastScreenshotPath.c_str());
+                ImGui::TextWrapped(uiText(uiLanguage,
+                                          "Last screenshot: %s",
+                                          "Derniere capture: %s",
+                                          "Ultima captura: %s"),
+                                   m_lastScreenshotPath.c_str());
             }
 
-            if (ImGui::Button("Clear cloud cache")) {
+            if (ImGui::Button(uiText(uiLanguage, "Clear cloud cache", "Vider cache nuage", "Limpiar cache nube"))) {
                 m_cloudCache.clear();
             }
-            ImGui::TextWrapped("Cached clouds: %d / %d",
+            ImGui::TextWrapped(uiText(uiLanguage,
+                                      "Cached clouds: %d / %d",
+                                      "Nuages en cache: %d / %d",
+                                      "Nubes en cache: %d / %d"),
                                static_cast<int>(m_cloudCache.size()),
                                static_cast<int>(m_cacheLimit));
-            ImGui::TextWrapped("Keyboard: S saves a screenshot, C toggles clipping, Space/R resets.");
+            ImGui::TextWrapped("%s", uiText(uiLanguage,
+                                            "Keyboard: S saves a screenshot, C toggles clipping, Space/R resets.",
+                                            "Clavier: S capture, C active la decoupe, Espace/R reinitialise.",
+                                            "Teclado: S guarda captura, C alterna recorte, Espacio/R reinicia."));
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Info")) {
-            ImGui::Text("Hydrogen-like orbital model");
+        if (ImGui::BeginTabItem(uiText(uiLanguage, "Info", "Info", "Info"))) {
+            ImGui::Text("%s", uiText(uiLanguage,
+                                     "Hydrogen-like orbital model",
+                                     "Modele orbital type hydrogene",
+                                     "Modelo orbital tipo hidrogeno"));
             ImGui::Separator();
             ImGui::TextWrapped("psi_nlm(r, theta, phi) = R_nl(r) Y_l^m(theta, phi)");
             ImGui::TextWrapped("rho(r, theta, phi) = |psi_nlm|^2");
-            ImGui::TextWrapped("R_nl is evaluated with associated Laguerre polynomials. Y_l^m is evaluated with associated Legendre polynomials and normalized factorial terms.");
-            ImGui::TextWrapped("The cloud is sampled from rho * r^2 on a radial/theta density grid, then phi is sampled uniformly. This keeps high-n orbitals responsive and avoids slow rejection-sampling stalls.");
+            ImGui::TextWrapped("%s", uiText(uiLanguage,
+                                            "R_nl is evaluated with associated Laguerre polynomials. Y_l^m is evaluated with associated Legendre polynomials and normalized factorial terms.",
+                                            "R_nl utilise les polynomes de Laguerre associes. Y_l^m utilise Legendre associe et des termes factoriels normalises.",
+                                            "R_nl usa polinomios de Laguerre asociados. Y_l^m usa Legendre asociado y terminos factoriales normalizados."));
+            ImGui::TextWrapped("%s", uiText(uiLanguage,
+                                            "The cloud is sampled from rho * r^2 on a radial/theta density grid, then phi is sampled uniformly. This keeps high-n orbitals responsive and avoids slow rejection-sampling stalls.",
+                                            "Le nuage est echantillonne depuis rho * r^2 sur une grille rayon/theta, puis phi est uniforme.",
+                                            "La nube se muestrea desde rho * r^2 en una grilla radial/theta, luego phi es uniforme."));
             ImGui::Spacing();
             ImGui::TextWrapped("%s", QUANTUMATOM_PROJECT_DESCRIPTION);
             ImGui::TextWrapped("%s", QUANTUMATOM_PROJECT_HOMEPAGE);
