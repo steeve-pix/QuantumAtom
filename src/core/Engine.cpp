@@ -1169,15 +1169,20 @@ void Engine::drawCloud(float timeVal, const glm::mat4 &viewProjection) {
         m_vboDirty = false;
     }
 
-    // Additive blending makes glow/halo modes accumulate light. Depth writes are
-    // disabled so translucent point sprites do not punch holes into later points.
-    glEnable(GL_BLEND);
+    // Density points are opaque so nearby samples block the cloud behind them.
+    // Glow/phase/halo modes remain blended because their softness is intentional.
     const bool additive = renderMode == RenderMode::GlowBillboards ||
                           renderMode == RenderMode::PhaseFlow ||
                           renderMode == RenderMode::HaloFog;
-    glBlendFunc(GL_SRC_ALPHA, additive ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
+    const bool opaqueCloud = renderMode == RenderMode::DensityPoints;
+    if (opaqueCloud) {
+        glDisable(GL_BLEND);
+    } else {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, additive ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
+    }
     glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
+    glDepthMask(opaqueCloud ? GL_TRUE : GL_FALSE);
 
     glUseProgram(m_cloudProgram);
     // Most visual controls are uniforms, so changing color, threshold, clipping,
@@ -1204,6 +1209,7 @@ void Engine::drawCloud(float timeVal, const glm::mat4 &viewProjection) {
 
     glUseProgram(0);
     glDepthMask(GL_TRUE);
+    glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 

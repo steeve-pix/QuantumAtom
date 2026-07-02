@@ -407,7 +407,7 @@ include/utils/QuantumTypes.h
 
     - RenderMode
         Controls how the point cloud is shaded:
-        - DensityPoints: standard translucent density cloud.
+        - DensityPoints: solid depth-tested density cloud.
         - GlowBillboards: additive glowing points.
         - IsoShell: keeps points near a normalized density band.
         - PhaseFlow: animated phase-like color/size variation.
@@ -558,7 +558,7 @@ shaders/cloud.vert.glsl
     - optionally rotates point positions for phase-flow style animation;
     - computes heat/phase values sent to the fragment shader;
     - applies clipping rules;
-    - calculates gl_PointSize based on render mode;
+    - calculates perspective-scaled gl_PointSize based on camera depth and render mode;
     - transforms the point by uViewProjection.
 
     Clipping is done here so discarded points never reach expensive fragment
