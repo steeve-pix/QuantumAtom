@@ -18,6 +18,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 option(QUANTUMATOM_WITH_DEBUG_SYMBOLS "Emit debug symbols for optimized builds" ON)
 option(QUANTUMATOM_STATIC_MINGW_RUNTIME "Statically link libgcc/libstdc++ when building with MinGW" ON)
 option(QUANTUMATOM_FETCH_DEPS "Fetch dependencies that are not found by find_package/vcpkg" ON)
+option(QUANTUMATOM_WINDOWS_GUI "Build the Windows executable without an attached console window" ON)
 
 set(QUANTUMATOM_MAX_N "8" CACHE STRING "Maximum supported principal quantum number")
 set(QUANTUMATOM_DEFAULT_POINTS "120000" CACHE STRING "Default point-cloud sample count")
@@ -164,6 +165,12 @@ set(QUANTUMATOM_SOURCES
 )
 
 add_executable(QuantumAtom ${QUANTUMATOM_SOURCES})
+if(WIN32 AND QUANTUMATOM_WINDOWS_GUI)
+    set_target_properties(QuantumAtom PROPERTIES WIN32_EXECUTABLE TRUE)
+    if(MSVC)
+        target_link_options(QuantumAtom PRIVATE /ENTRY:mainCRTStartup)
+    endif()
+endif()
 target_include_directories(QuantumAtom PRIVATE
     include
     ${CMAKE_CURRENT_BINARY_DIR}/generated
