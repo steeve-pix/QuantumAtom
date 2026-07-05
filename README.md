@@ -153,6 +153,7 @@ The tracked `third_party/glad` loader keeps OpenGL setup predictable even withou
 | `QUANTUMATOM_WITH_DEBUG_SYMBOLS` | `ON` | Emit symbols for optimized builds |
 | `QUANTUMATOM_FETCH_DEPS` | `ON` | Fetch missing dependencies |
 | `QUANTUMATOM_STATIC_MINGW_RUNTIME` | `ON` | Statically link MinGW runtime libraries |
+| `QUANTUMATOM_WINDOWS_GUI` | `ON` | Build the Windows executable without an attached console window |
 
 Example:
 
