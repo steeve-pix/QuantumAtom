@@ -53,6 +53,80 @@ namespace {
         return english;
     }
 
+#if defined(__cpp_char8_t)
+    const char *utf8Text(const char8_t *text) {
+        return reinterpret_cast<const char *>(text);
+    }
+#else
+    const char *utf8Text(const char *text) {
+        return text;
+    }
+#endif
+
+    ImFont *loadMathGlyphs(ImGuiIO &io) {
+        static constexpr ImWchar kMathGlyphRanges[] = {
+            0x00B2, 0x00B2,
+            0x0370, 0x03FF,
+            0x1D00, 0x1D7F,
+            0x2070, 0x209F,
+            0,
+        };
+        static constexpr ImWchar kInfoMathGlyphRanges[] = {
+            0x0020, 0x007E,
+            0x00B2, 0x00B2,
+            0x0370, 0x03FF,
+            0x1D00, 0x1D7F,
+            0x2070, 0x209F,
+            0,
+        };
+
+        io.Fonts->AddFontDefault();
+
+        ImFontConfig mergeConfig;
+        mergeConfig.MergeMode = true;
+        mergeConfig.PixelSnapH = true;
+
+        static constexpr std::array<const char *, 7> kFontCandidates = {
+            "C:/Windows/Fonts/segoeui.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        };
+
+        const char *mathFontPath = nullptr;
+        for (const char *fontPath : kFontCandidates) {
+            if (std::filesystem::exists(fontPath) &&
+                io.Fonts->AddFontFromFileTTF(fontPath, 0.0f, &mergeConfig, kMathGlyphRanges) != nullptr) {
+                mathFontPath = fontPath;
+                break;
+            }
+        }
+
+        ImFontConfig infoMathConfig;
+        infoMathConfig.PixelSnapH = true;
+        infoMathConfig.OversampleH = 2;
+        infoMathConfig.OversampleV = 2;
+
+        if (mathFontPath) {
+            if (ImFont *font = io.Fonts->AddFontFromFileTTF(mathFontPath, 18.0f, &infoMathConfig, kInfoMathGlyphRanges)) {
+                return font;
+            }
+        }
+
+        for (const char *fontPath : kFontCandidates) {
+            if (std::filesystem::exists(fontPath)) {
+                if (ImFont *font = io.Fonts->AddFontFromFileTTF(fontPath, 18.0f, &infoMathConfig, kInfoMathGlyphRanges)) {
+                    return font;
+                }
+            }
+        }
+
+        return nullptr;
+    }
+
     const char *languageName(UiLanguage language) {
         switch (language) {
             case UiLanguage::English: return "English";
@@ -113,7 +187,7 @@ namespace {
 
     void helpMarker(const char *text) {
         ImGui::SameLine();
-        ImGui::TextDisabled("(?)");
+        ImGui::TextDisabled("(i)");
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::BeginTooltip();
             ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
@@ -789,6 +863,7 @@ void Engine::initImGui() {
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    m_infoMathFont = loadMathGlyphs(io);
 
     applyTheme(theme);
     ImGui_ImplGlfw_InitForOpenGL(window, false);
@@ -1198,12 +1273,15 @@ void Engine::renderUI() {
                                      "Modele orbital type hydrogene",
                                      "Modelo orbital tipo hidrogeno"));
             ImGui::Separator();
-            ImGui::TextWrapped("psi_nlm(r, theta, phi) = R_nl(r) Y_l^m(theta, phi)");
-            ImGui::TextWrapped("rho(r, theta, phi) = |psi_nlm|^2");
+            if (m_infoMathFont) ImGui::PushFont(m_infoMathFont);
+            ImGui::TextWrapped("%s", utf8Text(u8"\u03C8\u2099\u2097\u2098(r, \u03B8, \u03C6) = R\u2099\u2097(r) Y\u2097\u1D50(\u03B8, \u03C6)"));
+            ImGui::TextWrapped("%s", utf8Text(u8"\u03C1(r, \u03B8, \u03C6) = |\u03C8\u2099\u2097\u2098(r, \u03B8, \u03C6)|\u00B2"));
+            ImGui::Spacing();
             ImGui::TextWrapped("%s", uiText(uiLanguage,
-                                            "R_nl is evaluated with associated Laguerre polynomials. Y_l^m is evaluated with associated Legendre polynomials and normalized factorial terms.",
-                                            "R_nl utilise les polynomes de Laguerre associes. Y_l^m utilise Legendre associe et des termes factoriels normalises.",
-                                            "R_nl usa polinomios de Laguerre asociados. Y_l^m usa Legendre asociado y terminos factoriales normalizados."));
+                                            utf8Text(u8"R\u2099\u2097 is evaluated with associated Laguerre polynomials. Y\u2097\u1D50 is evaluated with associated Legendre polynomials and normalized factorial terms."),
+                                            utf8Text(u8"R\u2099\u2097 utilise les polynomes de Laguerre associes. Y\u2097\u1D50 utilise Legendre associe et des termes factoriels normalises."),
+                                            utf8Text(u8"R\u2099\u2097 usa polinomios de Laguerre asociados. Y\u2097\u1D50 usa Legendre asociado y terminos factoriales normalizados.")));
+            if (m_infoMathFont) ImGui::PopFont();
             ImGui::TextWrapped("%s", uiText(uiLanguage,
                                             "The cloud is sampled from rho * r^2 on a radial/theta density grid, then phi is sampled uniformly. This keeps high-n orbitals responsive and avoids slow rejection-sampling stalls.",
                                             "Le nuage est echantillonne depuis rho * r^2 sur une grille rayon/theta, puis phi est uniforme.",

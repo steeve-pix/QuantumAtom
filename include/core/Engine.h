@@ -15,6 +15,8 @@
 #include <thread>
 #include <vector>
 
+struct ImFont;
+
 // Cache keys deliberately ignore purely visual settings. Color maps, threshold,
 // clipping, and render mode are shader uniforms, so the same cloud can be reused.
 struct CloudCacheKey {
@@ -128,8 +130,9 @@ private:
 
     bool m_screenshotRequested = false;
     std::string m_lastScreenshotPath;
+    ImFont *m_infoMathFont = nullptr;
     bool m_showAxes = true;
-    bool m_showElectronTracker = true;
+    bool m_showElectronTracker = false;
 
     // Initialization and utility helpers are private so the frame loop remains
     // small and main.cpp does not need to know OpenGL details.
