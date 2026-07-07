@@ -637,12 +637,35 @@ void Engine::regenerateCloud() {
                     r * sinTheta * sinf(phi)
                 );
 
-                const float omega = 0.12f + dis(gen) * 0.72f;
-                points.push_back({pos, glm::vec3(0.0f), density, omega});
+                const float rPerp2 = pos.x * pos.x + pos.z * pos.z;
+                const float axisSoftening = 0.05f * grid.maxR;
+                const float rawOmega = 1.0f / (rPerp2 + axisSoftening * axisSoftening);
+
+                points.push_back({pos, glm::vec3(0.0f), density, rawOmega});
 
                 if ((i & 0x7FF) == 0) {
                     const int local = count > 0 ? i * (progressEnd - progressBegin) / count : 0;
                     m_buildProgress.store(std::clamp(progressBegin + local, 0, 99));
+                }
+            }
+
+            if (!points.empty()) {
+                std::vector<float> rawOmegas;
+                rawOmegas.reserve(points.size());
+
+                for (const auto &p : points) {
+                    rawOmegas.push_back(p.omega);
+                }
+
+                auto median = rawOmegas.begin() + rawOmegas.size() / 2;
+                std::nth_element(rawOmegas.begin(), median, rawOmegas.end());
+
+                const float medianOmega = std::max(*median, 1e-8f);
+                const float targetMedianOmega = 0.48f;
+                const float scale = targetMedianOmega / medianOmega;
+
+                for (auto &p : points) {
+                    p.omega = std::clamp(p.omega * scale, 0.05f, 1.25f);
                 }
             }
 
