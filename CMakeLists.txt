@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(QuantumAtom
-    VERSION 1.0.2
+    VERSION 2.0.0
     DESCRIPTION "Real-time hydrogen-like atomic orbital visualizer"
-    HOMEPAGE_URL "https://github.com/steeve-pix/Atom"
+    HOMEPAGE_URL "https://github.com/steeve-pix/QuantumAtom"
     LANGUAGES C CXX
 )
 
@@ -16,12 +16,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 option(QUANTUMATOM_WITH_DEBUG_SYMBOLS "Emit debug symbols for optimized builds" ON)
+option(QUANTUMATOM_STATIC_MSVC_RUNTIME "Statically link the MSVC runtime when building with Visual Studio/MSVC" ON)
 option(QUANTUMATOM_STATIC_MINGW_RUNTIME "Statically link libgcc/libstdc++ when building with MinGW" ON)
 option(QUANTUMATOM_FETCH_DEPS "Fetch dependencies that are not found by find_package/vcpkg" ON)
 option(QUANTUMATOM_WINDOWS_GUI "Build the Windows executable without an attached console window" ON)
 
 set(QUANTUMATOM_MAX_N "8" CACHE STRING "Maximum supported principal quantum number")
 set(QUANTUMATOM_DEFAULT_POINTS "120000" CACHE STRING "Default point-cloud sample count")
+
+if(MSVC AND QUANTUMATOM_STATIC_MSVC_RUNTIME)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 add_compile_definitions(GLM_ENABLE_EXPERIMENTAL)
 
