@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If QuantumAtom helps your teaching, demos, or research notes, please cite it."
+title: "QuantumAtom"
+type: software
+authors:
+  - family-names: "Dim"
+    given-names: "Steeve"
+repository-code: "https://github.com/steeve-pix/Atom"
+url: "https://github.com/steeve-pix/Atom"
+version: "1.1.0"
+date-released: "2026-07-02"
+license: "MIT"
+abstract: "Real-time C++23/OpenGL visualizer for hydrogen-like atomic orbitals."

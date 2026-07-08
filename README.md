@@ -111,6 +111,10 @@ cmake --build build --parallel
 
 When GLFW is fetched by CMake on Linux, QuantumAtom builds GLFW's X11 backend and disables Wayland in that fallback path. This keeps CI and clean Ubuntu builds from requiring `wayland-scanner`.
 
+### Windows Release Packages
+
+Windows Release builds made with MSVC statically link the Visual C++ runtime by default (`QUANTUMATOM_STATIC_MSVC_RUNTIME=ON`). This avoids missing `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`, or `MSVCP140.dll` errors on computers without Visual Studio. Distribute the CPack `.zip` or the `dist/QuantumAtom` folder instead of only copying `QuantumAtom.exe`, because the app also needs `shaders/` and `config/` next to the executable.
+
 ### Windows with MSYS2 UCRT
 
 ```powershell
@@ -152,7 +156,9 @@ The tracked `third_party/glad` loader keeps OpenGL setup predictable even withou
 | `QUANTUMATOM_DEFAULT_POINTS` | `120000` | Startup point-cloud budget |
 | `QUANTUMATOM_WITH_DEBUG_SYMBOLS` | `ON` | Emit symbols for optimized builds |
 | `QUANTUMATOM_FETCH_DEPS` | `ON` | Fetch missing dependencies |
+| `QUANTUMATOM_STATIC_MSVC_RUNTIME` | `ON` | Statically link the Visual C++ runtime for MSVC builds |
 | `QUANTUMATOM_STATIC_MINGW_RUNTIME` | `ON` | Statically link MinGW runtime libraries |
+| `QUANTUMATOM_WINDOWS_GUI` | `ON` | Build the Windows executable without an attached console window |
 
 Example:
 
@@ -167,7 +173,7 @@ cmake --install build --config Release --prefix dist/QuantumAtom
 cmake --build build --target package --config Release
 ```
 
-CPack creates `.zip` and `.tar.gz` packages containing the executable, shaders, default config, samples, docs, README, and license.
+CPack creates `.zip` and `.tar.gz` packages containing the executable, shaders, default config, samples, docs, README, and license. On Windows, share the generated `.zip` package so users get the complete app folder.
 
 ## Runtime Configuration
 
