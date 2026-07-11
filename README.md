@@ -7,7 +7,7 @@ Real-time C++23 and OpenGL visualizer for hydrogen-like atomic orbitals.
 QuantumAtom renders analytical hydrogen-like wavefunctions as interactive 3D probability clouds. It is built for fast educational exploration: choose quantum numbers, watch the cloud regenerate in the background, switch rendering modes, clip into the orbital, and export screenshots.
 
 <p align="center">
-  <img src="docs/media/quantumatom-8k-density.png" alt="QuantumAtom n=8 halo rendering shown in a maximized desktop window" width="900">
+  <img src="docs/media/quantumatom-8k-halo.png" alt="QuantumAtom n=8 halo rendering shown in a maximized desktop window" width="900">
 </p>
 
 ## Features
