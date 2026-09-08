@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(QuantumAtom
-    VERSION 2.0.0
+    VERSION 2.0.1
     DESCRIPTION "Real-time hydrogen-like atomic orbital visualizer"
     HOMEPAGE_URL "https://github.com/steeve-pix/QuantumAtom"
     LANGUAGES C CXX
@@ -162,9 +162,9 @@ set_target_properties(imgui PROPERTIES FOLDER "Dependencies")
 
 set(QUANTUMATOM_SOURCES
     src/main.cpp
-    src/Camera.cpp
-    src/QuantumSimulation.cpp
-    src/ShaderLoader.cpp
+    src/core/Camera.cpp
+    src/physics/QuantumSimulation.cpp
+    src/graphics/ShaderLoader.cpp
     src/core/AppConfig.cpp
     src/core/Engine.cpp
 )
