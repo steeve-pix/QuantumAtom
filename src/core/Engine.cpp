@@ -338,14 +338,16 @@ Engine::Engine(int width, int height, const std::string &title, AppConfig config
       m_title(title),
       m_config(std::move(config)),
       m_launchConfig(m_config),
-      m_launchState(state),
       m_dis(0.0f, 1.0f) {
     std::random_device rd;
     m_gen = std::mt19937(rd());
 
-    // Keep an exact launch snapshot so pressing R can restore the same state the
+    // Keep an exact launch snapshot, so pressing R can restore the same state the
     // executable had at startup, not merely a hard-coded approximation.
     applyRuntimeConfig(m_config);
+    m_launchState = state;
+    m_launchShowAxes = m_showAxes;
+    m_launchShowElectronTracker = m_showElectronTracker;
 
     initGlfwWindow();
     initOpenGL();
@@ -735,8 +737,8 @@ void Engine::resetSimulation() {
     electronAngle = 0.0f;
     m_firstMouse = true;
     m_mouseButtonDown = -1;
-    m_showAxes = true;
-    m_showElectronTracker = true;
+    m_showAxes = m_launchShowAxes;
+    m_showElectronTracker = m_launchShowElectronTracker;
     m_lastScreenshotPath.clear();
     m_cloudCache.clear();
     cloudPoints.clear();

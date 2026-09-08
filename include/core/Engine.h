@@ -52,14 +52,16 @@ enum class CloudBuildStage : int {
  */
 class Engine {
 private:
-    // Window/config state. m_launchConfig and m_launchState exist so R can
-    // restore exactly the startup state.
+    // Window/config state. Launch snapshots exist so R can restore exactly the
+    // startup state.
     int m_width;
     int m_height;
     std::string m_title;
     AppConfig m_config;
     AppConfig m_launchConfig;
     QuantumState m_launchState;
+    bool m_launchShowAxes = true;
+    bool m_launchShowElectronTracker = false;
 
     // OpenGL program and object handles. These are created on the render thread
     // and destroyed in the Engine destructor.
