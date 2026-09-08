@@ -80,6 +80,9 @@ namespace {
             0,
         };
 
+        constexpr  float kDefaultFontSize = 13.0f;
+        constexpr float kInfoFontSize = 18.0f;
+
         io.Fonts->AddFontDefault();
 
         ImFontConfig mergeConfig;
@@ -99,7 +102,7 @@ namespace {
         const char *mathFontPath = nullptr;
         for (const char *fontPath : kFontCandidates) {
             if (std::filesystem::exists(fontPath) &&
-                io.Fonts->AddFontFromFileTTF(fontPath, 0.0f, &mergeConfig, kMathGlyphRanges) != nullptr) {
+                io.Fonts->AddFontFromFileTTF(fontPath, kDefaultFontSize, &mergeConfig, kMathGlyphRanges) != nullptr) {
                 mathFontPath = fontPath;
                 break;
             }
@@ -111,14 +114,15 @@ namespace {
         infoMathConfig.OversampleV = 2;
 
         if (mathFontPath) {
-            if (ImFont *font = io.Fonts->AddFontFromFileTTF(mathFontPath, 18.0f, &infoMathConfig, kInfoMathGlyphRanges)) {
+            if (ImFont *font = io.Fonts->AddFontFromFileTTF(mathFontPath, kInfoFontSize, &infoMathConfig, kInfoMathGlyphRanges)) {
                 return font;
             }
         }
 
         for (const char *fontPath : kFontCandidates) {
             if (std::filesystem::exists(fontPath)) {
-                if (ImFont *font = io.Fonts->AddFontFromFileTTF(fontPath, 18.0f, &infoMathConfig, kInfoMathGlyphRanges)) {
+                if (ImFont *font = io.Fonts->AddFontFromFileTTF(fontPath, kInfoFontSize, &infoMathConfig,
+                                                                kInfoMathGlyphRanges)) {
                     return font;
                 }
             }
